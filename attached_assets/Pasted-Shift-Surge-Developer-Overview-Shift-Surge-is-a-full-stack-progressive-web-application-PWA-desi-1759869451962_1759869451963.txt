@@ -1,0 +1,76 @@
+Shift Surge — Developer Overview
+
+Shift Surge is a full-stack progressive web application (PWA) designed to connect restaurants with verified service-industry workers through targeted, real-time promotions.
+The platform enables restaurants to create, schedule, and broadcast offers, while workers can browse, claim, and redeem deals through an intuitive, mobile-first experience.
+
+Core Purpose
+
+To build a scalable, reliable, and responsive system that:
+
+Allows restaurants to manage promotions, track engagement, and target specific user groups.
+
+Provides workers with instant access to active, relevant offers — with smooth claiming and redemption workflows.
+
+Functions as a PWA, enabling installability, offline capability, and push notifications for maximum user reach.
+
+System Overview
+
+Frontend: React + TypeScript + Vite (PWA-ready)
+
+UI Framework: Tailwind CSS + shadcn/ui + lucide-react
+
+State & Data Management: TanStack Query (server state), Zustand (local UI), Zod + React Hook Form (validation & forms)
+
+Backend & Auth: Supabase (Postgres, Auth, Storage)
+
+ORM: Drizzle ORM (typed schema + migrations)
+
+Testing: Vitest + React Testing Library
+
+Deployment: Optimized for Replit development and easy deployment to edge hosts (e.g., Vercel/Fly.io)
+
+High-Level Features
+
+Restaurant Admin Console
+
+Create, schedule, and manage promotions
+
+Audience targeting (role, geofence, venue type)
+
+Real-time analytics dashboard
+
+Worker Experience
+
+Industry verification (auth + profile)
+
+Personalized promotion feed
+
+Instant claim/redeem with QR or code
+
+PWA Functionality
+
+Installable on mobile devices
+
+Offline-ready with background sync
+
+Push notifications for new promos
+
+Analytics & Insights
+
+Track impressions, claims, and redemptions
+
+Venue-level performance metrics
+
+Promotion ROI tracking
+
+Architectural Principles
+
+Modular, feature-based file structure for scalability and maintainability
+
+Strong typing and schema-driven validation for data integrity
+
+Offline-first PWA design — network optional, not required
+
+Replit-first workflow: rapid iteration, live collaboration, and auto-deployment
+
+Future expandability: microservice-ready backend (Supabase edge functions), mobile app wrappers (React Native or Capacitor)
