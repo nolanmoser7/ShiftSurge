@@ -22,7 +22,7 @@ export async function comparePasswords(
 
 export interface AuthRequest extends Request {
   userId?: string;
-  userRole?: "worker" | "restaurant";
+  userRole?: "worker" | "restaurant" | "super_admin";
 }
 
 export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
@@ -52,5 +52,23 @@ export function requireRestaurant(req: AuthRequest, res: Response, next: NextFun
   }
   req.userId = session.userId;
   req.userRole = session.userRole;
+  next();
+}
+
+export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
+  const session = (req as any).session;
+  
+  // Check if admin session exists
+  if (!session?.adminUserId) {
+    return res.status(401).json({ error: "Admin authentication required" });
+  }
+
+  // Verify the user has super_admin role
+  if (session.adminUserRole !== "super_admin") {
+    return res.status(403).json({ error: "Superadmin access required" });
+  }
+
+  req.userId = session.adminUserId;
+  req.userRole = session.adminUserRole;
   next();
 }
