@@ -1,0 +1,44 @@
+Data APIs and client libraries#
+The Data APIs allow you to interact with your database using REST or GraphQL requests. You can use these APIs to fetch and insert data from the frontend, as long as you have RLS enabled.
+
+REST
+GraphQL
+For convenience, you can also use the Supabase client libraries, which wrap the Data APIs with a developer-friendly interface and automatically handle authentication:
+
+JavaScript
+Flutter
+Swift
+Python
+C#
+Kotlin
+Direct connection#
+The direct connection string connects directly to your Postgres instance. It is ideal for persistent servers, such as virtual machines (VMs) and long-lasting containers. Examples include AWS EC2 machines, Fly.io VMs, and DigitalOcean Droplets.
+
+Direct connections use IPv6 by default. If your environment doesn't support IPv6, use Supavisor session mode or get the IPv4 add-on.
+
+The connection string looks like this:
+
+postgresql://postgres:[YOUR-PASSWORD]@db.apbkobhfnmcqqzqeeqss.supabase.co:5432/postgres
+Get your project's direct connection string from your project dashboard by clicking Connect.
+
+Shared pooler#
+Every Supabase project includes a free, shared connection pooler. This is ideal for persistent servers when IPv6 is not supported.
+
+Supavisor session mode#
+The session mode connection string connects to your Postgres instance via a proxy.
+
+The connection string looks like this:
+
+postgres://postgres.apbkobhfnmcqqzqeeqss:[YOUR-PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres
+Get your project's Session pooler connection string from your project dashboard by clicking Connect.
+
+Supavisor transaction mode#
+The transaction mode connection string connects to your Postgres instance via a proxy which serves as a connection pooler. This is ideal for serverless or edge functions, which require many transient connections.
+
+Transaction mode does not support prepared statements. To avoid errors, turn off prepared statements for your connection library.
+
+The connection string looks like this:
+
+postgres://postgres.apbkobhfnmcqqzqeeqss:[YOUR-PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres
+Get your project's Transaction pooler connection string from your project dashboard by clicking Connect.
+
