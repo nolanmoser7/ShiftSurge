@@ -126,6 +126,25 @@ export const claims = pgTable("claims", {
   isRedeemed: boolean("is_redeemed").default(false).notNull(),
 });
 
+// Audit logs - track all superadmin actions
+export const auditLogs = pgTable("audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  actorId: varchar("actor_id").references(() => users.id, { onDelete: "set null" }),
+  action: text("action").notNull(),
+  subject: text("subject").notNull(),
+  details: text("details"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Feature flags - toggle platform features
+export const featureFlags = pgTable("feature_flags", {
+  key: text("key").primaryKey(),
+  enabled: boolean("enabled").default(false).notNull(),
+  payload: text("payload"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Insert schemas with validation
 export const insertNeighborhoodSchema = createInsertSchema(neighborhoods).omit({ id: true, createdAt: true });
 export const insertOrganizationSchema = createInsertSchema(organizations).omit({ id: true, createdAt: true, updatedAt: true });
@@ -141,6 +160,8 @@ export const insertRedemptionSchema = createInsertSchema(redemptions).omit({ id:
 export const insertFavoriteSchema = createInsertSchema(favorites).omit({ id: true, createdAt: true });
 export const insertInviteTokenSchema = createInsertSchema(inviteTokens).omit({ id: true, createdAt: true, currentUses: true });
 export const insertClaimSchema = createInsertSchema(claims).omit({ id: true, claimedAt: true });
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, createdAt: true });
+export const insertFeatureFlagSchema = createInsertSchema(featureFlags).omit({ createdAt: true, updatedAt: true });
 
 // Types
 export type Neighborhood = typeof neighborhoods.$inferSelect;
@@ -172,3 +193,9 @@ export type InsertInviteToken = z.infer<typeof insertInviteTokenSchema>;
 
 export type Claim = typeof claims.$inferSelect;
 export type InsertClaim = z.infer<typeof insertClaimSchema>;
+
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+
+export type FeatureFlag = typeof featureFlags.$inferSelect;
+export type InsertFeatureFlag = z.infer<typeof insertFeatureFlagSchema>;
