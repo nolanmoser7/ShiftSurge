@@ -6,12 +6,20 @@ import {
   type InsertWorkerProfile,
   type RestaurantProfile,
   type InsertRestaurantProfile,
+  type Organization,
+  type InsertOrganization,
+  type Neighborhood,
+  type InsertNeighborhood,
   type Promotion,
   type InsertPromotion,
-  type Claim,
-  type InsertClaim,
   type Redemption,
   type InsertRedemption,
+  type Favorite,
+  type InsertFavorite,
+  type InviteToken,
+  type InsertInviteToken,
+  type Claim,
+  type InsertClaim,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -28,24 +36,48 @@ export interface IStorage {
   getRestaurantProfile(userId: string): Promise<RestaurantProfile | undefined>;
   createRestaurantProfile(profile: InsertRestaurantProfile): Promise<RestaurantProfile>;
 
+  // Organization operations
+  getOrganization(id: string): Promise<Organization | undefined>;
+  createOrganization(org: InsertOrganization): Promise<Organization>;
+  updateOrganization(id: string, org: Partial<Organization>): Promise<Organization | undefined>;
+  getOrganizations(): Promise<Organization[]>;
+
+  // Neighborhood operations
+  getNeighborhood(id: string): Promise<Neighborhood | undefined>;
+  getNeighborhoodBySlug(slug: string): Promise<Neighborhood | undefined>;
+  createNeighborhood(neighborhood: InsertNeighborhood): Promise<Neighborhood>;
+  getNeighborhoods(): Promise<Neighborhood[]>;
+
   // Promotion operations
   getPromotion(id: string): Promise<Promotion | undefined>;
-  getActivePromotions(): Promise<any[]>;
-  getRestaurantPromotions(restaurantId: string): Promise<any[]>;
+  getActivePromotions(neighborhoodId?: string): Promise<any[]>;
+  getOrganizationPromotions(organizationId: string): Promise<any[]>;
   createPromotion(promotion: InsertPromotion): Promise<Promotion>;
   updatePromotion(id: string, promotion: Partial<Promotion>): Promise<Promotion | undefined>;
-  incrementPromotionImpressions(id: string): Promise<void>;
 
-  // Claim operations
+  // Redemption operations
+  createRedemption(redemption: InsertRedemption): Promise<Redemption>;
+  getPromotionRedemptionCount(promotionId: string): Promise<number>;
+  getWorkerRedemptions(workerProfileId: string): Promise<Redemption[]>;
+
+  // Favorite operations
+  getFavorites(workerProfileId: string): Promise<Favorite[]>;
+  createFavorite(favorite: InsertFavorite): Promise<Favorite>;
+  deleteFavorite(id: string): Promise<void>;
+  isFavorited(workerProfileId: string, promotionId: string): Promise<boolean>;
+
+  // Invite token operations
+  getInviteToken(token: string): Promise<InviteToken | undefined>;
+  createInviteToken(inviteToken: InsertInviteToken): Promise<InviteToken>;
+  incrementInviteTokenUse(id: string): Promise<void>;
+  getOrganizationInviteTokens(organizationId: string): Promise<InviteToken[]>;
+
+  // Legacy Claim operations (for backward compatibility)
   getClaim(id: string): Promise<Claim | undefined>;
   getClaimByCode(code: string): Promise<Claim | undefined>;
   getWorkerClaims(workerId: string): Promise<Claim[]>;
   createClaim(claim: InsertClaim): Promise<Claim>;
   updateClaim(id: string, claim: Partial<Claim>): Promise<Claim | undefined>;
-
-  // Redemption operations
-  createRedemption(redemption: InsertRedemption): Promise<Redemption>;
-  getPromotionRedemptionCount(promotionId: string): Promise<number>;
 }
 
 export class SupabaseStorage implements IStorage {
@@ -58,7 +90,7 @@ export class SupabaseStorage implements IStorage {
       .single();
     
     if (error) {
-      if (error.code === 'PGRST116') return undefined; // Not found
+      if (error.code === 'PGRST116') return undefined;
       throw error;
     }
     return data as User;
@@ -72,7 +104,7 @@ export class SupabaseStorage implements IStorage {
       .single();
     
     if (error) {
-      if (error.code === 'PGRST116') return undefined; // Not found
+      if (error.code === 'PGRST116') return undefined;
       throw error;
     }
     return data as User;
@@ -109,6 +141,7 @@ export class SupabaseStorage implements IStorage {
       .from('worker_profiles')
       .insert({
         user_id: profile.userId,
+        organization_id: profile.organizationId || null,
         name: profile.name,
         worker_role: profile.workerRole,
         is_verified: profile.isVerified
@@ -140,15 +173,143 @@ export class SupabaseStorage implements IStorage {
       .from('restaurant_profiles')
       .insert({
         user_id: profile.userId,
-        name: profile.name,
-        address: profile.address,
-        logo_url: profile.logoUrl
+        organization_id: profile.organizationId,
+        name: profile.name
       })
       .select()
       .single();
     
     if (error) throw error;
     return data as RestaurantProfile;
+  }
+
+  // Organization operations
+  async getOrganization(id: string): Promise<Organization | undefined> {
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') return undefined;
+      throw error;
+    }
+    return data as Organization;
+  }
+
+  async createOrganization(org: InsertOrganization): Promise<Organization> {
+    const { data, error } = await supabase
+      .from('organizations')
+      .insert({
+        name: org.name,
+        address: org.address || null,
+        neighborhood_id: org.neighborhoodId || null,
+        logo_url: org.logoUrl || null,
+        subscription_status: org.subscriptionStatus || 'trial',
+        subscription_plan_id: org.subscriptionPlanId || null,
+        stripe_customer_id: org.stripeCustomerId || null,
+        stripe_subscription_id: org.stripeSubscriptionId || null,
+        trial_ends_at: org.trialEndsAt || null,
+        is_active: org.isActive !== undefined ? org.isActive : true
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data as Organization;
+  }
+
+  async updateOrganization(id: string, org: Partial<Organization>): Promise<Organization | undefined> {
+    const updateData: any = { updated_at: new Date().toISOString() };
+    
+    if (org.name !== undefined) updateData.name = org.name;
+    if (org.address !== undefined) updateData.address = org.address;
+    if (org.neighborhoodId !== undefined) updateData.neighborhood_id = org.neighborhoodId;
+    if (org.logoUrl !== undefined) updateData.logo_url = org.logoUrl;
+    if (org.subscriptionStatus !== undefined) updateData.subscription_status = org.subscriptionStatus;
+    if (org.subscriptionPlanId !== undefined) updateData.subscription_plan_id = org.subscriptionPlanId;
+    if (org.stripeCustomerId !== undefined) updateData.stripe_customer_id = org.stripeCustomerId;
+    if (org.stripeSubscriptionId !== undefined) updateData.stripe_subscription_id = org.stripeSubscriptionId;
+    if (org.trialEndsAt !== undefined) updateData.trial_ends_at = org.trialEndsAt;
+    if (org.isActive !== undefined) updateData.is_active = org.isActive;
+
+    const { data, error } = await supabase
+      .from('organizations')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') return undefined;
+      throw error;
+    }
+    return data as Organization;
+  }
+
+  async getOrganizations(): Promise<Organization[]> {
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    return (data || []) as Organization[];
+  }
+
+  // Neighborhood operations
+  async getNeighborhood(id: string): Promise<Neighborhood | undefined> {
+    const { data, error } = await supabase
+      .from('neighborhoods')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') return undefined;
+      throw error;
+    }
+    return data as Neighborhood;
+  }
+
+  async getNeighborhoodBySlug(slug: string): Promise<Neighborhood | undefined> {
+    const { data, error } = await supabase
+      .from('neighborhoods')
+      .select('*')
+      .eq('slug', slug)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') return undefined;
+      throw error;
+    }
+    return data as Neighborhood;
+  }
+
+  async createNeighborhood(neighborhood: InsertNeighborhood): Promise<Neighborhood> {
+    const { data, error } = await supabase
+      .from('neighborhoods')
+      .insert({
+        name: neighborhood.name,
+        slug: neighborhood.slug,
+        description: neighborhood.description || null
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data as Neighborhood;
+  }
+
+  async getNeighborhoods(): Promise<Neighborhood[]> {
+    const { data, error } = await supabase
+      .from('neighborhoods')
+      .select('*')
+      .order('name', { ascending: true });
+    
+    if (error) throw error;
+    return (data || []) as Neighborhood[];
   }
 
   // Promotion operations
@@ -166,35 +327,49 @@ export class SupabaseStorage implements IStorage {
     return data as Promotion;
   }
 
-  async getActivePromotions(): Promise<any[]> {
-    const { data, error } = await supabase
+  async getActivePromotions(neighborhoodId?: string): Promise<any[]> {
+    let query = supabase
       .from('promotions')
       .select(`
         *,
-        restaurant_profiles!inner (
+        organizations!inner (
           name,
           address,
           logo_url
+        ),
+        neighborhoods (
+          name,
+          slug
         )
       `)
       .eq('status', 'active')
-      .order('created_at', { ascending: false });
+      .eq('is_active', true);
+    
+    if (neighborhoodId) {
+      query = query.eq('neighborhood_id', neighborhoodId);
+    }
+    
+    query = query.order('created_at', { ascending: false });
+    
+    const { data, error } = await query;
     
     if (error) throw error;
     
     return (data || []).map(promo => ({
       ...promo,
-      restaurantName: promo.restaurant_profiles?.name,
-      restaurantAddress: promo.restaurant_profiles?.address,
-      restaurantLogoUrl: promo.restaurant_profiles?.logo_url
+      organizationName: promo.organizations?.name,
+      organizationAddress: promo.organizations?.address,
+      organizationLogoUrl: promo.organizations?.logo_url,
+      neighborhoodName: promo.neighborhoods?.name,
+      neighborhoodSlug: promo.neighborhoods?.slug
     }));
   }
 
-  async getRestaurantPromotions(restaurantId: string): Promise<any[]> {
+  async getOrganizationPromotions(organizationId: string): Promise<any[]> {
     const { data, error } = await supabase
       .from('promotions')
       .select('*')
-      .eq('restaurant_id', restaurantId)
+      .eq('organization_id', organizationId)
       .order('created_at', { ascending: false });
     
     if (error) throw error;
@@ -214,15 +389,16 @@ export class SupabaseStorage implements IStorage {
     const { data, error } = await supabase
       .from('promotions')
       .insert({
-        restaurant_id: promotion.restaurantId,
+        organization_id: promotion.organizationId,
+        neighborhood_id: promotion.neighborhoodId || null,
         title: promotion.title,
         description: promotion.description,
-        image_url: promotion.imageUrl,
+        image_url: promotion.imageUrl || null,
         discount_type: promotion.discountType,
         discount_value: promotion.discountValue,
-        start_date: promotion.startDate,
-        end_date: promotion.endDate,
-        max_claims: promotion.maxClaims,
+        start_date: promotion.startDate || null,
+        end_date: promotion.endDate || null,
+        is_active: promotion.isActive !== undefined ? promotion.isActive : true,
         status: promotion.status || 'draft'
       })
       .select()
@@ -242,10 +418,9 @@ export class SupabaseStorage implements IStorage {
     if (promotion.discountValue !== undefined) updateData.discount_value = promotion.discountValue;
     if (promotion.startDate !== undefined) updateData.start_date = promotion.startDate;
     if (promotion.endDate !== undefined) updateData.end_date = promotion.endDate;
-    if (promotion.maxClaims !== undefined) updateData.max_claims = promotion.maxClaims;
-    if (promotion.currentClaims !== undefined) updateData.current_claims = promotion.currentClaims;
     if (promotion.status !== undefined) updateData.status = promotion.status;
-    if (promotion.impressions !== undefined) updateData.impressions = promotion.impressions;
+    if (promotion.isActive !== undefined) updateData.is_active = promotion.isActive;
+    if (promotion.neighborhoodId !== undefined) updateData.neighborhood_id = promotion.neighborhoodId;
 
     const { data, error } = await supabase
       .from('promotions')
@@ -261,17 +436,154 @@ export class SupabaseStorage implements IStorage {
     return data as Promotion;
   }
 
-  async incrementPromotionImpressions(id: string): Promise<void> {
-    const promotion = await this.getPromotion(id);
-    if (promotion) {
+  // Redemption operations
+  async createRedemption(redemption: InsertRedemption): Promise<Redemption> {
+    const { data, error } = await supabase
+      .from('redemptions')
+      .insert({
+        promotion_id: redemption.promotionId,
+        worker_profile_id: redemption.workerProfileId,
+        validated_by_organization_id: redemption.validatedByOrganizationId,
+        validated_by_user_id: redemption.validatedByUserId || null
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data as Redemption;
+  }
+
+  async getPromotionRedemptionCount(promotionId: string): Promise<number> {
+    const { data, error } = await supabase
+      .from('redemptions')
+      .select('id')
+      .eq('promotion_id', promotionId);
+    
+    if (error) throw error;
+    return (data || []).length;
+  }
+
+  async getWorkerRedemptions(workerProfileId: string): Promise<Redemption[]> {
+    const { data, error } = await supabase
+      .from('redemptions')
+      .select('*')
+      .eq('worker_profile_id', workerProfileId)
+      .order('redeemed_at', { ascending: false });
+    
+    if (error) throw error;
+    return (data || []) as Redemption[];
+  }
+
+  // Favorite operations
+  async getFavorites(workerProfileId: string): Promise<Favorite[]> {
+    const { data, error } = await supabase
+      .from('favorites')
+      .select('*')
+      .eq('worker_profile_id', workerProfileId)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    return (data || []) as Favorite[];
+  }
+
+  async createFavorite(favorite: InsertFavorite): Promise<Favorite> {
+    const { data, error } = await supabase
+      .from('favorites')
+      .insert({
+        worker_profile_id: favorite.workerProfileId,
+        promotion_id: favorite.promotionId
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data as Favorite;
+  }
+
+  async deleteFavorite(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('favorites')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
+  }
+
+  async isFavorited(workerProfileId: string, promotionId: string): Promise<boolean> {
+    const { data, error } = await supabase
+      .from('favorites')
+      .select('id')
+      .eq('worker_profile_id', workerProfileId)
+      .eq('promotion_id', promotionId)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') return false;
+      throw error;
+    }
+    return !!data;
+  }
+
+  // Invite token operations
+  async getInviteToken(token: string): Promise<InviteToken | undefined> {
+    const { data, error } = await supabase
+      .from('invite_tokens')
+      .select('*')
+      .eq('token', token)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') return undefined;
+      throw error;
+    }
+    return data as InviteToken;
+  }
+
+  async createInviteToken(inviteToken: InsertInviteToken): Promise<InviteToken> {
+    const { data, error } = await supabase
+      .from('invite_tokens')
+      .insert({
+        organization_id: inviteToken.organizationId,
+        token: inviteToken.token,
+        created_by_user_id: inviteToken.createdByUserId,
+        max_uses: inviteToken.maxUses || null,
+        expires_at: inviteToken.expiresAt || null,
+        is_active: inviteToken.isActive !== undefined ? inviteToken.isActive : true
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data as InviteToken;
+  }
+
+  async incrementInviteTokenUse(id: string): Promise<void> {
+    const token = await supabase
+      .from('invite_tokens')
+      .select('current_uses')
+      .eq('id', id)
+      .single();
+    
+    if (token.data) {
       await supabase
-        .from('promotions')
-        .update({ impressions: (promotion.impressions || 0) + 1 })
+        .from('invite_tokens')
+        .update({ current_uses: (token.data.current_uses || 0) + 1 })
         .eq('id', id);
     }
   }
 
-  // Claim operations
+  async getOrganizationInviteTokens(organizationId: string): Promise<InviteToken[]> {
+    const { data, error } = await supabase
+      .from('invite_tokens')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    return (data || []) as InviteToken[];
+  }
+
+  // Legacy Claim operations (for backward compatibility)
   async getClaim(id: string): Promise<Claim | undefined> {
     const { data, error } = await supabase
       .from('claims')
@@ -325,15 +637,6 @@ export class SupabaseStorage implements IStorage {
       .single();
     
     if (error) throw error;
-    
-    // Increment promotion claims count
-    const promotion = await this.getPromotion(claim.promotionId);
-    if (promotion) {
-      await this.updatePromotion(claim.promotionId, {
-        currentClaims: (promotion.currentClaims || 0) + 1,
-      });
-    }
-    
     return data as Claim;
   }
 
@@ -355,34 +658,6 @@ export class SupabaseStorage implements IStorage {
       throw error;
     }
     return data as Claim;
-  }
-
-  // Redemption operations
-  async createRedemption(redemption: InsertRedemption): Promise<Redemption> {
-    const { data, error } = await supabase
-      .from('redemptions')
-      .insert({
-        claim_id: redemption.claimId
-      })
-      .select()
-      .single();
-    
-    if (error) throw error;
-    
-    // Mark claim as redeemed
-    await this.updateClaim(redemption.claimId, { isRedeemed: true });
-    
-    return data as Redemption;
-  }
-
-  async getPromotionRedemptionCount(promotionId: string): Promise<number> {
-    const { data, error } = await supabase
-      .from('redemptions')
-      .select('claim_id, claims!inner(promotion_id)')
-      .eq('claims.promotion_id', promotionId);
-    
-    if (error) throw error;
-    return (data || []).length;
   }
 }
 

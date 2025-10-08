@@ -47,11 +47,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           isVerified: false,
         });
       } else {
-        await storage.createRestaurantProfile({
-          userId: user.id,
+        // Create organization first
+        const organization = await storage.createOrganization({
           name: data.name,
           address: data.address,
           logoUrl: data.logoUrl,
+        });
+
+        // Then create restaurant profile linked to organization
+        await storage.createRestaurantProfile({
+          userId: user.id,
+          organizationId: organization.id,
+          name: data.name,
         });
       }
 
@@ -151,9 +158,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Convert date strings to Date objects
       const promotionData = {
         ...req.body,
-        restaurantId: restaurantProfile.id,
+        organizationId: restaurantProfile.organizationId,
         startDate: req.body.startDate ? new Date(req.body.startDate) : new Date(),
-        validUntil: req.body.validUntil ? new Date(req.body.validUntil) : undefined,
+        endDate: req.body.endDate ? new Date(req.body.endDate) : undefined,
       };
 
       const promotion = await storage.createPromotion(promotionData);
@@ -184,7 +191,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Restaurant profile not found" });
       }
 
-      const promotions = await storage.getRestaurantPromotions(restaurantProfile.id);
+      const promotions = await storage.getOrganizationPromotions(restaurantProfile.organizationId);
       res.json(promotions);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch promotions" });
@@ -259,9 +266,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Code expired" });
       }
 
+      const restaurantProfile = await storage.getRestaurantProfile(req.userId!);
+      if (!restaurantProfile) {
+        return res.status(404).json({ error: "Restaurant profile not found" });
+      }
+
       const redemption = await storage.createRedemption({
-        claimId: claim.id,
+        promotionId: claim.promotionId,
+        workerProfileId: claim.workerId,
+        validatedByOrganizationId: restaurantProfile.organizationId,
+        validatedByUserId: req.userId,
       });
+
+      // Mark the claim as redeemed
+      await storage.updateClaim(claim.id, { isRedeemed: true });
 
       res.json(redemption);
     } catch (error) {
