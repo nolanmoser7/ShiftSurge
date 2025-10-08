@@ -20,6 +20,10 @@ import {
   type InsertInviteToken,
   type Claim,
   type InsertClaim,
+  type AuditLog,
+  type InsertAuditLog,
+  type FeatureFlag,
+  type InsertFeatureFlag,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -78,6 +82,17 @@ export interface IStorage {
   getWorkerClaims(workerId: string): Promise<Claim[]>;
   createClaim(claim: InsertClaim): Promise<Claim>;
   updateClaim(id: string, claim: Partial<Claim>): Promise<Claim | undefined>;
+
+  // Admin operations
+  getAllUsers(limit?: number, offset?: number): Promise<{ users: User[]; total: number }>;
+  searchUsers(query: string): Promise<User[]>;
+  updateUser(id: string, user: Partial<User>): Promise<User | undefined>;
+  getUserWithProfile(id: string): Promise<any>;
+  createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
+  getAuditLogs(limit?: number, offset?: number): Promise<{ logs: AuditLog[]; total: number }>;
+  getDashboardMetrics(): Promise<any>;
+  updateFeatureFlag(key: string, enabled: boolean, payload?: string): Promise<FeatureFlag>;
+  getFeatureFlags(): Promise<FeatureFlag[]>;
 }
 
 export class SupabaseStorage implements IStorage {
@@ -658,6 +673,175 @@ export class SupabaseStorage implements IStorage {
       throw error;
     }
     return data as Claim;
+  }
+
+  // Admin operations
+  async getAllUsers(limit: number = 50, offset: number = 0): Promise<{ users: User[]; total: number }> {
+    const { data, error, count } = await supabase
+      .from('users')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw error;
+    return { users: (data || []) as User[], total: count || 0 };
+  }
+
+  async searchUsers(query: string): Promise<User[]> {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .ilike('email', `%${query}%`)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    
+    if (error) throw error;
+    return (data || []) as User[];
+  }
+
+  async updateUser(id: string, user: Partial<User>): Promise<User | undefined> {
+    const updateData: any = {};
+    if (user.email !== undefined) updateData.email = user.email;
+    if (user.role !== undefined) updateData.role = user.role;
+
+    const { data, error } = await supabase
+      .from('users')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') return undefined;
+      throw error;
+    }
+    return data as User;
+  }
+
+  async getUserWithProfile(id: string): Promise<any> {
+    const user = await this.getUser(id);
+    if (!user) return undefined;
+
+    let profile = null;
+    if (user.role === 'worker') {
+      profile = await this.getWorkerProfile(id);
+    } else if (user.role === 'restaurant') {
+      profile = await this.getRestaurantProfile(id);
+    }
+
+    return { user, profile };
+  }
+
+  async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .insert({
+        actor_id: log.actorId || null,
+        action: log.action,
+        subject: log.subject,
+        details: log.details || null
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data as AuditLog;
+  }
+
+  async getAuditLogs(limit: number = 50, offset: number = 0): Promise<{ logs: AuditLog[]; total: number }> {
+    const { data, error, count } = await supabase
+      .from('audit_logs')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw error;
+    return { logs: (data || []) as AuditLog[], total: count || 0 };
+  }
+
+  async getDashboardMetrics(): Promise<any> {
+    // Get total users
+    const { count: totalUsers } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true });
+
+    // Get total organizations
+    const { count: totalOrgs } = await supabase
+      .from('organizations')
+      .select('*', { count: 'exact', head: true });
+
+    // Get active users (last 30 days) - users who have created promotions, redemptions, or claims
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const { data: recentRedemptions } = await supabase
+      .from('redemptions')
+      .select('validated_by_user_id')
+      .gte('redeemed_at', thirtyDaysAgo.toISOString());
+
+    const activeUserIds = new Set((recentRedemptions || []).map(r => r.validated_by_user_id).filter(Boolean));
+    const activeUsers = activeUserIds.size;
+
+    // Get recent audit logs
+    const { data: recentLogs } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    return {
+      totalUsers: totalUsers || 0,
+      totalOrgs: totalOrgs || 0,
+      activeUsers,
+      recentLogs: recentLogs || []
+    };
+  }
+
+  async updateFeatureFlag(key: string, enabled: boolean, payload?: string): Promise<FeatureFlag> {
+    const { data: existing } = await supabase
+      .from('feature_flags')
+      .select('*')
+      .eq('key', key)
+      .single();
+
+    if (existing) {
+      const { data, error } = await supabase
+        .from('feature_flags')
+        .update({
+          enabled,
+          payload: payload || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('key', key)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data as FeatureFlag;
+    } else {
+      const { data, error } = await supabase
+        .from('feature_flags')
+        .insert({
+          key,
+          enabled,
+          payload: payload || null
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data as FeatureFlag;
+    }
+  }
+
+  async getFeatureFlags(): Promise<FeatureFlag[]> {
+    const { data, error } = await supabase
+      .from('feature_flags')
+      .select('*')
+      .order('key', { ascending: true });
+    
+    if (error) throw error;
+    return (data || []) as FeatureFlag[];
   }
 }
 
