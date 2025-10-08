@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { hashPassword, comparePasswords, requireAuth, requireWorker, requireRestaurant, type AuthRequest } from "./auth";
+import { hashPassword, comparePasswords, requireAuth, requireWorker, requireRestaurant, requireAdmin, type AuthRequest } from "./auth";
 import { z } from "zod";
 import { randomBytes } from "crypto";
 
@@ -285,6 +285,239 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Redemption error:", error);
       res.status(400).json({ error: "Failed to redeem" });
+    }
+  });
+
+  // Admin routes
+  app.post("/api/admin/login", async (req: AuthRequest, res) => {
+    try {
+      const { email, password } = req.body;
+
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+
+      // Verify user is a superadmin
+      if (user.role !== "super_admin") {
+        return res.status(403).json({ error: "Superadmin access required" });
+      }
+
+      const valid = await comparePasswords(password, user.password);
+      if (!valid) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+
+      // Set admin session (separate from regular user session)
+      (req as any).session.adminUserId = user.id;
+      (req as any).session.adminUserRole = user.role;
+
+      // Log admin login
+      await storage.createAuditLog({
+        actorId: user.id,
+        action: "ADMIN_LOGIN",
+        subject: "auth",
+        details: JSON.stringify({ email: user.email }),
+      });
+
+      res.json({ user: { id: user.id, email: user.email, role: user.role } });
+    } catch (error) {
+      console.error("Admin login error:", error);
+      res.status(400).json({ error: "Login failed" });
+    }
+  });
+
+  app.post("/api/admin/logout", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      // Log admin logout
+      await storage.createAuditLog({
+        actorId: req.userId,
+        action: "ADMIN_LOGOUT",
+        subject: "auth",
+        details: JSON.stringify({ userId: req.userId }),
+      });
+
+      // Clear admin session
+      delete (req as any).session.adminUserId;
+      delete (req as any).session.adminUserRole;
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Admin logout error:", error);
+      res.status(500).json({ error: "Logout failed" });
+    }
+  });
+
+  app.get("/api/admin/me", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const user = await storage.getUser(req.userId!);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json({ user: { id: user.id, email: user.email, role: user.role } });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch admin user" });
+    }
+  });
+
+  // Dashboard metrics
+  app.get("/api/admin/dashboard", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const metrics = await storage.getDashboardMetrics();
+      res.json(metrics);
+    } catch (error) {
+      console.error("Dashboard metrics error:", error);
+      res.status(500).json({ error: "Failed to fetch metrics" });
+    }
+  });
+
+  // User management
+  app.get("/api/admin/users", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const query = req.query.q as string | undefined;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      if (query) {
+        const users = await storage.searchUsers(query);
+        res.json({ users, total: users.length });
+      } else {
+        const result = await storage.getAllUsers(limit, offset);
+        res.json(result);
+      }
+    } catch (error) {
+      console.error("Get users error:", error);
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  app.get("/api/admin/users/:id", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const userWithProfile = await storage.getUserWithProfile(req.params.id);
+      if (!userWithProfile) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json(userWithProfile);
+    } catch (error) {
+      console.error("Get user error:", error);
+      res.status(500).json({ error: "Failed to fetch user" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const updates = req.body;
+      const user = await storage.updateUser(req.params.id, updates);
+      
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Log admin action
+      await storage.createAuditLog({
+        actorId: req.userId,
+        action: "UPDATE_USER",
+        subject: `user:${req.params.id}`,
+        details: JSON.stringify({ updates }),
+      });
+
+      res.json(user);
+    } catch (error) {
+      console.error("Update user error:", error);
+      res.status(500).json({ error: "Failed to update user" });
+    }
+  });
+
+  // Organization management
+  app.get("/api/admin/organizations", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const organizations = await storage.getOrganizations();
+      res.json(organizations);
+    } catch (error) {
+      console.error("Get organizations error:", error);
+      res.status(500).json({ error: "Failed to fetch organizations" });
+    }
+  });
+
+  app.get("/api/admin/organizations/:id", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const organization = await storage.getOrganization(req.params.id);
+      if (!organization) {
+        return res.status(404).json({ error: "Organization not found" });
+      }
+      res.json(organization);
+    } catch (error) {
+      console.error("Get organization error:", error);
+      res.status(500).json({ error: "Failed to fetch organization" });
+    }
+  });
+
+  app.patch("/api/admin/organizations/:id", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const updates = req.body;
+      const organization = await storage.updateOrganization(req.params.id, updates);
+      
+      if (!organization) {
+        return res.status(404).json({ error: "Organization not found" });
+      }
+
+      // Log admin action
+      await storage.createAuditLog({
+        actorId: req.userId,
+        action: "UPDATE_ORGANIZATION",
+        subject: `organization:${req.params.id}`,
+        details: JSON.stringify({ updates }),
+      });
+
+      res.json(organization);
+    } catch (error) {
+      console.error("Update organization error:", error);
+      res.status(500).json({ error: "Failed to update organization" });
+    }
+  });
+
+  // Audit logs
+  app.get("/api/admin/audit-logs", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const result = await storage.getAuditLogs(limit, offset);
+      res.json(result);
+    } catch (error) {
+      console.error("Get audit logs error:", error);
+      res.status(500).json({ error: "Failed to fetch audit logs" });
+    }
+  });
+
+  // Feature flags
+  app.get("/api/admin/feature-flags", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const flags = await storage.getFeatureFlags();
+      res.json(flags);
+    } catch (error) {
+      console.error("Get feature flags error:", error);
+      res.status(500).json({ error: "Failed to fetch feature flags" });
+    }
+  });
+
+  app.put("/api/admin/feature-flags/:key", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const { enabled, payload } = req.body;
+      const flag = await storage.updateFeatureFlag(req.params.key, enabled, payload);
+
+      // Log admin action
+      await storage.createAuditLog({
+        actorId: req.userId,
+        action: "UPDATE_FEATURE_FLAG",
+        subject: `feature_flag:${req.params.key}`,
+        details: JSON.stringify({ enabled, payload }),
+      });
+
+      res.json(flag);
+    } catch (error) {
+      console.error("Update feature flag error:", error);
+      res.status(500).json({ error: "Failed to update feature flag" });
     }
   });
 
