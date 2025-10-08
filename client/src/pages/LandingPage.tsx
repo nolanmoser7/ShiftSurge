@@ -1,28 +1,55 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ArrowRight, Zap, Users, BarChart3, Smartphone } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LoginForm } from "@/components/LoginForm";
+import { SignupForm } from "@/components/SignupForm";
+import { useAuth } from "@/lib/auth";
+import { queryClient } from "@/lib/queryClient";
 import workersImage from '@assets/generated_images/Happy_service_workers_celebrating_90fd3651.png';
 import kitchenImage from '@assets/generated_images/Busy_restaurant_kitchen_scene_387a1353.png';
 
 export default function LandingPage() {
+  const [authDialog, setAuthDialog] = useState(false);
+  const [, setLocation] = useLocation();
+  const { user } = useAuth();
+
+  const handleAuthSuccess = async () => {
+    setAuthDialog(false);
+    // Re-fetch user data to ensure we have the latest role
+    const userData = await queryClient.fetchQuery({ queryKey: ["/api/auth/me"] });
+    const userRole = (userData as any)?.user?.role;
+    if (userRole === "worker") {
+      setLocation("/worker-feed");
+    } else if (userRole === "restaurant") {
+      setLocation("/restaurant-dashboard");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 bg-background/95 backdrop-blur border-b">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <h1 className="text-2xl font-display font-bold">Shift Surge</h1>
           <div className="flex items-center gap-4">
-            <Link href="/worker-feed">
-              <Button variant="ghost" data-testid="link-worker-login">
-                Worker Login
+            {user ? (
+              <Link href={user.role === "worker" ? "/worker-feed" : "/restaurant-dashboard"}>
+                <Button data-testid="button-dashboard">Dashboard</Button>
+              </Link>
+            ) : (
+              <Button onClick={() => setAuthDialog(true)} data-testid="button-login">
+                Login / Sign Up
               </Button>
-            </Link>
-            <Link href="/restaurant-dashboard">
-              <Button variant="ghost" data-testid="link-restaurant-login">
-                Restaurant Login
-              </Button>
-            </Link>
+            )}
             <ThemeToggle />
           </div>
         </div>
@@ -44,26 +71,15 @@ export default function LandingPage() {
             targeted, real-time promotions.
           </p>
           <div className="flex gap-4 justify-center flex-wrap">
-            <Link href="/worker-feed">
-              <Button
-                size="lg"
-                className="bg-white text-primary hover:bg-white/90 border-white text-lg"
-                data-testid="button-worker-signup"
-              >
-                I'm a Worker
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-            </Link>
-            <Link href="/restaurant-dashboard">
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-white text-white hover:bg-white/10 backdrop-blur-sm text-lg"
-                data-testid="button-restaurant-signup"
-              >
-                I'm a Restaurant
-              </Button>
-            </Link>
+            <Button
+              size="lg"
+              onClick={() => setAuthDialog(true)}
+              className="bg-white text-primary hover:bg-white/90 border-white text-lg"
+              data-testid="button-get-started"
+            >
+              Get Started
+              <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
           </div>
         </div>
       </section>
@@ -228,27 +244,14 @@ export default function LandingPage() {
           <p className="text-xl mb-8 opacity-90 max-w-2xl mx-auto">
             Join thousands of workers and restaurants already using Shift Surge
           </p>
-          <div className="flex gap-4 justify-center flex-wrap">
-            <Link href="/worker-feed">
-              <Button
-                size="lg"
-                className="bg-white text-primary hover:bg-white/90 text-lg"
-                data-testid="button-cta-worker"
-              >
-                Get Started as Worker
-              </Button>
-            </Link>
-            <Link href="/restaurant-dashboard">
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-white text-white hover:bg-white/10 text-lg"
-                data-testid="button-cta-restaurant"
-              >
-                Get Started as Restaurant
-              </Button>
-            </Link>
-          </div>
+          <Button
+            size="lg"
+            onClick={() => setAuthDialog(true)}
+            className="bg-white text-primary hover:bg-white/90 text-lg"
+            data-testid="button-cta"
+          >
+            Get Started Now
+          </Button>
         </div>
       </section>
 
@@ -265,6 +268,26 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      <Dialog open={authDialog} onOpenChange={setAuthDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Welcome to Shift Surge</DialogTitle>
+          </DialogHeader>
+          <Tabs defaultValue="login">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="login" data-testid="tab-login">Login</TabsTrigger>
+              <TabsTrigger value="signup" data-testid="tab-signup">Sign Up</TabsTrigger>
+            </TabsList>
+            <TabsContent value="login">
+              <LoginForm onSuccess={handleAuthSuccess} />
+            </TabsContent>
+            <TabsContent value="signup">
+              <SignupForm onSuccess={handleAuthSuccess} />
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

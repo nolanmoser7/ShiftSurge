@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,7 +19,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 
-export function PromotionForm() {
+interface PromotionFormProps {
+  onSuccess?: () => void;
+}
+
+export function PromotionForm({ onSuccess }: PromotionFormProps) {
+  const { toast } = useToast();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [discountType, setDiscountType] = useState("");
@@ -24,15 +32,49 @@ export function PromotionForm() {
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
 
+  const createPromotionMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/promotions", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Promotion created successfully",
+      });
+      if (onSuccess) {
+        onSuccess();
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create promotion",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Form submitted:", {
+    
+    if (!title || !description || !discountType || !discountValue) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    createPromotionMutation.mutate({
       title,
       description,
       discountType,
       discountValue,
-      startDate,
-      endDate,
+      status: "active",
+      startDate: startDate?.toISOString(),
+      endDate: endDate?.toISOString(),
     });
   };
 
@@ -48,6 +90,7 @@ export function PromotionForm() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             data-testid="input-promotion-title"
+            required
           />
         </div>
 
@@ -60,6 +103,7 @@ export function PromotionForm() {
             onChange={(e) => setDescription(e.target.value)}
             rows={4}
             data-testid="input-promotion-description"
+            required
           />
         </div>
 
@@ -86,6 +130,7 @@ export function PromotionForm() {
               value={discountValue}
               onChange={(e) => setDiscountValue(e.target.value)}
               data-testid="input-discount-value"
+              required
             />
           </div>
         </div>
@@ -96,6 +141,7 @@ export function PromotionForm() {
             <Popover>
               <PopoverTrigger asChild>
                 <Button
+                  type="button"
                   variant="outline"
                   className="w-full justify-start text-left font-normal"
                   data-testid="button-start-date"
@@ -115,6 +161,7 @@ export function PromotionForm() {
             <Popover>
               <PopoverTrigger asChild>
                 <Button
+                  type="button"
                   variant="outline"
                   className="w-full justify-start text-left font-normal"
                   data-testid="button-end-date"
@@ -131,14 +178,20 @@ export function PromotionForm() {
         </div>
 
         <div className="flex gap-4 pt-4">
-          <Button type="submit" className="flex-1" data-testid="button-create-promotion">
-            Create Promotion
+          <Button 
+            type="submit" 
+            className="flex-1" 
+            data-testid="button-create-promotion"
+            disabled={createPromotionMutation.isPending}
+          >
+            {createPromotionMutation.isPending ? "Creating..." : "Create Promotion"}
           </Button>
           <Button
             type="button"
             variant="outline"
             className="flex-1"
             data-testid="button-cancel"
+            onClick={() => onSuccess?.()}
           >
             Cancel
           </Button>

@@ -1,4 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/lib/auth";
+import { queryClient } from "@/lib/queryClient";
 import { StatCard } from "@/components/StatCard";
 import { PromotionForm } from "@/components/PromotionForm";
 import {
@@ -20,68 +24,77 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-//todo: remove mock functionality
-const MOCK_STATS = [
-  {
-    title: "Total Impressions",
-    value: "12,847",
-    change: "+18.2% from last week",
-    trend: "up" as const,
-    icon: Eye,
-  },
-  {
-    title: "Active Promotions",
-    value: "8",
-    change: "3 expiring soon",
-    trend: "neutral" as const,
-    icon: TrendingUp,
-  },
-  {
-    title: "Total Claims",
-    value: "1,247",
-    change: "+12.5% from last week",
-    trend: "up" as const,
-    icon: Users,
-  },
-  {
-    title: "Redemptions",
-    value: "892",
-    change: "71.5% conversion rate",
-    trend: "up" as const,
-    icon: CheckCircle2,
-  },
-];
-
-//todo: remove mock functionality
-const MOCK_PROMOTIONS = [
-  {
-    id: "1",
-    title: "50% Off Gourmet Burgers",
-    status: "active",
-    claims: 247,
-    redemptions: 189,
-    impressions: 3521,
-  },
-  {
-    id: "2",
-    title: "Buy 2 Get 1 Free Cocktails",
-    status: "active",
-    claims: 412,
-    redemptions: 298,
-    impressions: 5234,
-  },
-  {
-    id: "3",
-    title: "Free Dessert Pizza",
-    status: "scheduled",
-    claims: 0,
-    redemptions: 0,
-    impressions: 0,
-  },
-];
-
 export default function RestaurantDashboard() {
+  const { user, isLoading: authLoading } = useAuth();
+  const [, setLocation] = useLocation();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+
+  // Redirect if not authenticated or not a restaurant
+  useEffect(() => {
+    if (!authLoading && (!user || user.role !== "restaurant")) {
+      setLocation("/");
+    }
+  }, [user, authLoading, setLocation]);
+
+  // Fetch restaurant's promotions
+  const { data: promotions = [], isLoading: promotionsLoading } = useQuery<any[]>({
+    queryKey: ["/api/restaurant/promotions"],
+    enabled: !!user && user.role === "restaurant",
+  });
+
+  // Calculate stats from promotions data
+  const stats = {
+    totalImpressions: promotions.reduce((sum: number, p: any) => sum + (p.impressions || 0), 0),
+    activePromotions: promotions.filter((p: any) => p.status === "active").length,
+    totalClaims: promotions.reduce((sum: number, p: any) => sum + (p.currentClaims || 0), 0),
+    totalRedemptions: promotions.reduce((sum: number, p: any) => sum + (p.redemptions || 0), 0),
+  };
+
+  const conversionRate = stats.totalClaims > 0 
+    ? ((stats.totalRedemptions / stats.totalClaims) * 100).toFixed(1) 
+    : "0.0";
+
+  const statsCards = [
+    {
+      title: "Total Impressions",
+      value: stats.totalImpressions.toLocaleString(),
+      change: "Across all promotions",
+      trend: "neutral" as const,
+      icon: Eye,
+    },
+    {
+      title: "Active Promotions",
+      value: stats.activePromotions.toString(),
+      change: `${promotions.length - stats.activePromotions} inactive`,
+      trend: "neutral" as const,
+      icon: TrendingUp,
+    },
+    {
+      title: "Total Claims",
+      value: stats.totalClaims.toLocaleString(),
+      change: "Workers claimed deals",
+      trend: "up" as const,
+      icon: Users,
+    },
+    {
+      title: "Redemptions",
+      value: stats.totalRedemptions.toLocaleString(),
+      change: `${conversionRate}% conversion rate`,
+      trend: "up" as const,
+      icon: CheckCircle2,
+    },
+  ];
+
+  if (authLoading || promotionsLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -100,7 +113,10 @@ export default function RestaurantDashboard() {
                 <DialogHeader>
                   <DialogTitle>Create New Promotion</DialogTitle>
                 </DialogHeader>
-                <PromotionForm />
+                <PromotionForm onSuccess={() => {
+                  setIsCreateOpen(false);
+                  queryClient.invalidateQueries({ queryKey: ["/api/restaurant/promotions"] });
+                }} />
               </DialogContent>
             </Dialog>
             <ThemeToggle />
@@ -117,59 +133,69 @@ export default function RestaurantDashboard() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-          {MOCK_STATS.map((stat) => (
+          {statsCards.map((stat) => (
             <StatCard key={stat.title} {...stat} />
           ))}
         </div>
 
         <div className="mb-8">
-          <h2 className="text-2xl font-display font-bold mb-6">Active Promotions</h2>
-          <div className="space-y-4">
-            {MOCK_PROMOTIONS.map((promo) => (
-              <Card key={promo.id} className="p-6" data-testid={`card-promo-${promo.id}`}>
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="font-semibold text-lg mb-1">{promo.title}</h3>
-                    <Badge
-                      variant={promo.status === "active" ? "default" : "outline"}
-                      data-testid={`badge-status-${promo.id}`}
-                    >
-                      {promo.status}
-                    </Badge>
+          <h2 className="text-2xl font-display font-bold mb-6">
+            {promotions.length === 0 ? "No Promotions Yet" : "Your Promotions"}
+          </h2>
+          {promotions.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground mb-4">
+                You haven't created any promotions yet. Click "New Promotion" to get started!
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {promotions.map((promo: any) => (
+                <Card key={promo.id} className="p-6" data-testid={`card-promo-${promo.id}`}>
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h3 className="font-semibold text-lg mb-1">{promo.title}</h3>
+                      <Badge
+                        variant={promo.status === "active" ? "default" : "outline"}
+                        data-testid={`badge-status-${promo.id}`}
+                      >
+                        {promo.status}
+                      </Badge>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" data-testid={`button-edit-${promo.id}`}>
+                        Edit
+                      </Button>
+                      <Button variant="outline" size="sm" data-testid={`button-pause-${promo.id}`}>
+                        {promo.status === "active" ? "Pause" : "Activate"}
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" data-testid={`button-edit-${promo.id}`}>
-                      Edit
-                    </Button>
-                    <Button variant="outline" size="sm" data-testid={`button-pause-${promo.id}`}>
-                      Pause
-                    </Button>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Impressions</p>
-                    <p className="text-2xl font-semibold" data-testid={`text-impressions-${promo.id}`}>
-                      {promo.impressions.toLocaleString()}
-                    </p>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Impressions</p>
+                      <p className="text-2xl font-semibold" data-testid={`text-impressions-${promo.id}`}>
+                        {(promo.impressions || 0).toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Claims</p>
+                      <p className="text-2xl font-semibold" data-testid={`text-claims-${promo.id}`}>
+                        {promo.currentClaims || 0}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Redemptions</p>
+                      <p className="text-2xl font-semibold" data-testid={`text-redemptions-${promo.id}`}>
+                        {promo.redemptions || 0}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Claims</p>
-                    <p className="text-2xl font-semibold" data-testid={`text-claims-${promo.id}`}>
-                      {promo.claims}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Redemptions</p>
-                    <p className="text-2xl font-semibold" data-testid={`text-redemptions-${promo.id}`}>
-                      {promo.redemptions}
-                    </p>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

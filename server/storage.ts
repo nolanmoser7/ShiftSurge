@@ -37,8 +37,8 @@ export interface IStorage {
 
   // Promotion operations
   getPromotion(id: string): Promise<Promotion | undefined>;
-  getActivePromotions(): Promise<Promotion[]>;
-  getRestaurantPromotions(restaurantId: string): Promise<Promotion[]>;
+  getActivePromotions(): Promise<any[]>;
+  getRestaurantPromotions(restaurantId: string): Promise<any[]>;
   createPromotion(promotion: InsertPromotion): Promise<Promotion>;
   updatePromotion(id: string, promotion: Partial<Promotion>): Promise<Promotion | undefined>;
   incrementPromotionImpressions(id: string): Promise<void>;
@@ -52,6 +52,7 @@ export interface IStorage {
 
   // Redemption operations
   createRedemption(redemption: InsertRedemption): Promise<Redemption>;
+  getPromotionRedemptionCount(promotionId: string): Promise<number>;
 }
 
 export class DbStorage implements IStorage {
@@ -107,20 +108,68 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async getActivePromotions(): Promise<Promotion[]> {
-    return await db
-      .select()
+  async getActivePromotions(): Promise<any[]> {
+    const result = await db
+      .select({
+        id: promotions.id,
+        restaurantId: promotions.restaurantId,
+        title: promotions.title,
+        description: promotions.description,
+        imageUrl: promotions.imageUrl,
+        discountType: promotions.discountType,
+        discountValue: promotions.discountValue,
+        status: promotions.status,
+        startDate: promotions.startDate,
+        endDate: promotions.endDate,
+        maxClaims: promotions.maxClaims,
+        currentClaims: promotions.currentClaims,
+        impressions: promotions.impressions,
+        createdAt: promotions.createdAt,
+        updatedAt: promotions.updatedAt,
+        restaurantName: restaurantProfiles.name,
+        restaurantAddress: restaurantProfiles.address,
+        restaurantLogoUrl: restaurantProfiles.logoUrl,
+      })
       .from(promotions)
+      .leftJoin(restaurantProfiles, eq(promotions.restaurantId, restaurantProfiles.id))
       .where(eq(promotions.status, "active"))
       .orderBy(desc(promotions.createdAt));
+    
+    return result;
   }
 
-  async getRestaurantPromotions(restaurantId: string): Promise<Promotion[]> {
-    return await db
-      .select()
+  async getRestaurantPromotions(restaurantId: string): Promise<any[]> {
+    const promos = await db
+      .select({
+        id: promotions.id,
+        restaurantId: promotions.restaurantId,
+        title: promotions.title,
+        description: promotions.description,
+        imageUrl: promotions.imageUrl,
+        discountType: promotions.discountType,
+        discountValue: promotions.discountValue,
+        status: promotions.status,
+        startDate: promotions.startDate,
+        endDate: promotions.endDate,
+        maxClaims: promotions.maxClaims,
+        currentClaims: promotions.currentClaims,
+        impressions: promotions.impressions,
+        createdAt: promotions.createdAt,
+        updatedAt: promotions.updatedAt,
+      })
       .from(promotions)
       .where(eq(promotions.restaurantId, restaurantId))
       .orderBy(desc(promotions.createdAt));
+    
+    // Add redemption counts to each promotion
+    const result = await Promise.all(
+      promos.map(async (promo) => ({
+        ...promo,
+        redemptions: await this.getPromotionRedemptionCount(promo.id),
+      }))
+    );
+    
+    return result;
   }
 
   async createPromotion(promotion: InsertPromotion): Promise<Promotion> {
@@ -197,6 +246,16 @@ export class DbStorage implements IStorage {
     await this.updateClaim(redemption.claimId, { isRedeemed: true });
     
     return result[0];
+  }
+
+  async getPromotionRedemptionCount(promotionId: string): Promise<number> {
+    const result = await db
+      .select()
+      .from(redemptions)
+      .leftJoin(claims, eq(redemptions.claimId, claims.id))
+      .where(eq(claims.promotionId, promotionId));
+    
+    return result.length;
   }
 }
 
