@@ -1,3 +1,9 @@
+// Re-export the Supabase storage implementation
+export type { IStorage } from "./storage-supabase";
+export { SupabaseStorage as DbStorage, storage } from "./storage-supabase";
+
+// Legacy Drizzle implementation (kept for reference, not used)
+/*
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
 import {
@@ -260,3 +266,4 @@ export class DbStorage implements IStorage {
 }
 
 export const storage = new DbStorage();
+*/
