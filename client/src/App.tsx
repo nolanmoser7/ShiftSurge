@@ -9,6 +9,11 @@ import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/LandingPage";
 import WorkerFeed from "@/pages/WorkerFeed";
 import RestaurantDashboard from "@/pages/RestaurantDashboard";
+import AdminLogin from "@/pages/AdminLogin";
+import AdminDashboard from "@/pages/AdminDashboard";
+import AdminUsers from "@/pages/AdminUsers";
+import AdminOrganizations from "@/pages/AdminOrganizations";
+import AdminAuditLogs from "@/pages/AdminAuditLogs";
 
 function Router() {
   return (
@@ -16,6 +21,11 @@ function Router() {
       <Route path="/" component={LandingPage} />
       <Route path="/worker-feed" component={WorkerFeed} />
       <Route path="/restaurant-dashboard" component={RestaurantDashboard} />
+      <Route path="/admin/login" component={AdminLogin} />
+      <Route path="/admin/dashboard" component={AdminDashboard} />
+      <Route path="/admin/users" component={AdminUsers} />
+      <Route path="/admin/organizations" component={AdminOrganizations} />
+      <Route path="/admin/audit-logs" component={AdminAuditLogs} />
       <Route component={NotFound} />
     </Switch>
   );
