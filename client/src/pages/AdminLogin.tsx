@@ -42,25 +42,25 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 sm:p-6">
       <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <div className="flex items-center justify-center mb-4">
-            <div className="rounded-full bg-primary/10 p-3">
-              <Shield className="h-8 w-8 text-primary" data-testid="icon-admin-shield" />
+        <CardHeader className="space-y-2 sm:space-y-3 pb-4 sm:pb-6">
+          <div className="flex items-center justify-center mb-2 sm:mb-4">
+            <div className="rounded-full bg-primary/10 p-2.5 sm:p-3">
+              <Shield className="h-7 w-7 sm:h-8 sm:w-8 text-primary" data-testid="icon-admin-shield" />
             </div>
           </div>
-          <CardTitle className="text-2xl text-center" data-testid="text-admin-login-title">
+          <CardTitle className="text-xl sm:text-2xl text-center leading-tight" data-testid="text-admin-login-title">
             Superadmin Login
           </CardTitle>
-          <CardDescription className="text-center" data-testid="text-admin-login-description">
+          <CardDescription className="text-center text-sm sm:text-base" data-testid="text-admin-login-description">
             Secure access to platform administration
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
+        <CardContent className="px-4 sm:px-6">
+          <form onSubmit={handleLogin} className="space-y-4 sm:space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="text-sm font-medium">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -68,23 +68,26 @@ export default function AdminLogin() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                className="text-base"
                 data-testid="input-admin-email"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password" className="text-sm font-medium">Password</Label>
               <Input
                 id="password"
                 type="password"
+                placeholder="Enter password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                className="text-base"
                 data-testid="input-admin-password"
               />
             </div>
             <Button
               type="submit"
-              className="w-full"
+              className="w-full mt-6 text-base"
               disabled={isLoading}
               data-testid="button-admin-login"
             >
