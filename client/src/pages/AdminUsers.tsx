@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -30,6 +31,7 @@ export default function AdminUsers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [roleFilter, setRoleFilter] = useState("all");
 
   const { data: usersData, isLoading } = useQuery({
     queryKey: searchQuery 
@@ -56,7 +58,12 @@ export default function AdminUsers() {
     },
   });
 
-  const users = Array.isArray(usersData) ? usersData : [];
+  const allUsers = Array.isArray(usersData) ? usersData : [];
+  
+  // Filter users based on selected role tab
+  const users = roleFilter === "all" 
+    ? allUsers 
+    : allUsers.filter((user: any) => user.role === roleFilter);
 
   const handleViewUser = (user: any) => {
     setSelectedUser(user);
@@ -103,21 +110,30 @@ export default function AdminUsers() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3 sm:pb-6">
-            <CardTitle className="text-lg sm:text-xl">Users</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">Loading users...</p>
+        <Tabs value={roleFilter} onValueChange={setRoleFilter} className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3 sm:pb-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <CardTitle className="text-lg sm:text-xl">Users</CardTitle>
+                <TabsList className="w-full sm:w-auto grid grid-cols-4 sm:inline-flex">
+                  <TabsTrigger value="all" data-testid="tab-all">All</TabsTrigger>
+                  <TabsTrigger value="worker" data-testid="tab-worker">Worker</TabsTrigger>
+                  <TabsTrigger value="restaurant" data-testid="tab-restaurant">Restaurant</TabsTrigger>
+                  <TabsTrigger value="super_admin" data-testid="tab-superadmin">Admin</TabsTrigger>
+                </TabsList>
               </div>
-            ) : users.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground" data-testid="text-no-users">No users found</p>
-              </div>
-            ) : (
-              <>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">Loading users...</p>
+                </div>
+              ) : users.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground" data-testid="text-no-users">No users found</p>
+                </div>
+              ) : (
+                <>
                 {/* Mobile Card View */}
                 <div className="md:hidden space-y-3">
                   {users.map((user: any) => (
@@ -217,6 +233,7 @@ export default function AdminUsers() {
             )}
           </CardContent>
         </Card>
+        </Tabs>
       </div>
 
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
