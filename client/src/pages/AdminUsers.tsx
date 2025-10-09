@@ -220,7 +220,7 @@ export default function AdminUsers() {
       </div>
 
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="max-w-md" data-testid="dialog-user-details">
+        <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md" data-testid="dialog-user-details">
           <DialogHeader className="space-y-2">
             <DialogTitle className="text-lg sm:text-xl">User Details</DialogTitle>
             <DialogDescription className="text-sm">View user information and profile</DialogDescription>

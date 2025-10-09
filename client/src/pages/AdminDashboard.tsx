@@ -136,18 +136,18 @@ export default function AdminDashboard() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <h1 className="text-3xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
+      <div className="space-y-4 sm:space-y-6">
+        <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
           {statsCards.map((stat) => (
             <Card key={stat.title}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-                <stat.icon className="h-4 w-4 text-muted-foreground" />
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-2">
+                <CardTitle className="text-xs sm:text-sm font-medium leading-tight">{stat.title}</CardTitle>
+                <stat.icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold" data-testid={stat.testId}>
+              <CardContent className="pt-1">
+                <div className="text-xl sm:text-2xl font-bold" data-testid={stat.testId}>
                   {stat.value.toLocaleString()}
                 </div>
               </CardContent>
@@ -156,31 +156,34 @@ export default function AdminDashboard() {
         </div>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Recent Admin Actions</CardTitle>
+          <CardHeader className="pb-3 sm:pb-6">
+            <CardTitle className="text-lg sm:text-xl">Recent Admin Actions</CardTitle>
           </CardHeader>
           <CardContent>
             {metricsData?.recentLogs && metricsData.recentLogs.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-3 sm:space-y-4">
                 {metricsData.recentLogs.map((log: any) => {
                   const formatted = formatAuditLogMessage(log);
                   return (
                     <div
                       key={log.id}
-                      className="flex items-start justify-between border-b pb-3 last:border-0"
+                      className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 border-b pb-3 last:border-0"
                       data-testid={`log-${log.id}`}
                     >
-                      <div className="space-y-1 flex-1">
-                        <div className="flex items-center gap-2">
-                          <Badge variant={formatted.variant as any} data-testid={`log-action-${log.id}`}>
+                      <div className="space-y-1.5 flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant={formatted.variant as any} className="text-xs" data-testid={`log-action-${log.id}`}>
                             {formatted.title}
                           </Badge>
+                          <p className="text-xs text-muted-foreground sm:hidden" data-testid={`log-time-mobile-${log.id}`}>
+                            {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
+                          </p>
                         </div>
-                        <p className="text-sm text-muted-foreground" data-testid={`log-description-${log.id}`}>
+                        <p className="text-sm text-muted-foreground break-words" data-testid={`log-description-${log.id}`}>
                           {formatted.description}
                         </p>
                       </div>
-                      <p className="text-xs text-muted-foreground whitespace-nowrap ml-4" data-testid={`log-time-${log.id}`}>
+                      <p className="hidden sm:block text-xs text-muted-foreground whitespace-nowrap ml-4" data-testid={`log-time-${log.id}`}>
                         {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
                       </p>
                     </div>
