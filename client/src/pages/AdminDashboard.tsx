@@ -109,7 +109,7 @@ export default function AdminDashboard() {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground whitespace-nowrap" data-testid={`log-time-${log.id}`}>
-                      {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
+                      {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
                     </p>
                   </div>
                 ))}

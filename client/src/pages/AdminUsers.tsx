@@ -56,7 +56,7 @@ export default function AdminUsers() {
     },
   });
 
-  const users = (usersData as any)?.users || [];
+  const users = Array.isArray(usersData) ? usersData : [];
 
   const handleViewUser = (user: any) => {
     setSelectedUser(user);
@@ -138,7 +138,7 @@ export default function AdminUsers() {
                         </Badge>
                       </TableCell>
                       <TableCell data-testid={`text-user-created-${user.id}`}>
-                        {formatDistanceToNow(new Date(user.created_at), { addSuffix: true })}
+                        {formatDistanceToNow(new Date(user.createdAt), { addSuffix: true })}
                       </TableCell>
                       <TableCell>
                         <Button

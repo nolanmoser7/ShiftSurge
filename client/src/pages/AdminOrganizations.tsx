@@ -84,7 +84,7 @@ export default function AdminOrganizations() {
     },
   });
 
-  const orgs = (orgsData as any)?.organizations || [];
+  const orgs = Array.isArray(orgsData) ? orgsData : [];
 
   const handleCreateOrg = () => {
     if (!orgName.trim()) return;
