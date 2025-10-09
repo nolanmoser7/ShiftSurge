@@ -78,14 +78,14 @@ export default function AdminUsers() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold" data-testid="text-users-title">User Management</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-users-title">User Management</h1>
         </div>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Search Users</CardTitle>
+          <CardHeader className="pb-3 sm:pb-6">
+            <CardTitle className="text-lg sm:text-xl">Search Users</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex gap-2">
@@ -95,7 +95,7 @@ export default function AdminUsers() {
                   placeholder="Search by email..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
+                  className="pl-9 text-base"
                   data-testid="input-search-users"
                 />
               </div>
@@ -104,8 +104,8 @@ export default function AdminUsers() {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Users</CardTitle>
+          <CardHeader className="pb-3 sm:pb-6">
+            <CardTitle className="text-lg sm:text-xl">Users</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -117,104 +117,152 @@ export default function AdminUsers() {
                 <p className="text-muted-foreground" data-testid="text-no-users">No users found</p>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <>
+                {/* Mobile Card View */}
+                <div className="md:hidden space-y-3">
                   {users.map((user: any) => (
-                    <TableRow key={user.id} data-testid={`row-user-${user.id}`}>
-                      <TableCell className="font-medium" data-testid={`text-user-email-${user.id}`}>
-                        {user.email}
-                      </TableCell>
-                      <TableCell data-testid={`text-user-name-${user.id}`}>
-                        {user.workerName || user.restaurantName || "-"}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          <Badge variant={getRoleBadgeVariant(user.role)} data-testid={`badge-role-${user.id}`}>
-                            {user.role}
-                          </Badge>
-                          {user.workerRole && (
-                            <Badge variant="outline" className="text-xs" data-testid={`badge-worker-role-${user.id}`}>
-                              {user.workerRole}
+                    <Card key={user.id} className="hover-elevate" data-testid={`row-user-${user.id}`}>
+                      <CardContent className="p-4">
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm truncate" data-testid={`text-user-email-${user.id}`}>
+                                {user.email}
+                              </p>
+                              <p className="text-sm text-muted-foreground truncate" data-testid={`text-user-name-${user.id}`}>
+                                {user.workerName || user.restaurantName || "-"}
+                              </p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewUser(user)}
+                              data-testid={`button-view-user-${user.id}`}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant={getRoleBadgeVariant(user.role)} data-testid={`badge-role-${user.id}`}>
+                              {user.role}
                             </Badge>
-                          )}
+                            {user.workerRole && (
+                              <Badge variant="outline" className="text-xs" data-testid={`badge-worker-role-${user.id}`}>
+                                {user.workerRole}
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground" data-testid={`text-user-created-${user.id}`}>
+                            {formatDistanceToNow(new Date(user.createdAt), { addSuffix: true })}
+                          </p>
                         </div>
-                      </TableCell>
-                      <TableCell data-testid={`text-user-created-${user.id}`}>
-                        {formatDistanceToNow(new Date(user.createdAt), { addSuffix: true })}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleViewUser(user)}
-                          data-testid={`button-view-user-${user.id}`}
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          View
-                        </Button>
-                      </TableCell>
-                    </TableRow>
+                      </CardContent>
+                    </Card>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Created</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {users.map((user: any) => (
+                        <TableRow key={user.id} data-testid={`row-user-${user.id}`}>
+                          <TableCell className="font-medium" data-testid={`text-user-email-${user.id}`}>
+                            {user.email}
+                          </TableCell>
+                          <TableCell data-testid={`text-user-name-${user.id}`}>
+                            {user.workerName || user.restaurantName || "-"}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              <Badge variant={getRoleBadgeVariant(user.role)} data-testid={`badge-role-${user.id}`}>
+                                {user.role}
+                              </Badge>
+                              {user.workerRole && (
+                                <Badge variant="outline" className="text-xs" data-testid={`badge-worker-role-${user.id}`}>
+                                  {user.workerRole}
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell data-testid={`text-user-created-${user.id}`}>
+                            {formatDistanceToNow(new Date(user.createdAt), { addSuffix: true })}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewUser(user)}
+                              data-testid={`button-view-user-${user.id}`}
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              View
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
       </div>
 
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent data-testid="dialog-user-details">
-          <DialogHeader>
-            <DialogTitle>User Details</DialogTitle>
-            <DialogDescription>View user information and profile</DialogDescription>
+        <DialogContent className="max-w-md" data-testid="dialog-user-details">
+          <DialogHeader className="space-y-2">
+            <DialogTitle className="text-lg sm:text-xl">User Details</DialogTitle>
+            <DialogDescription className="text-sm">View user information and profile</DialogDescription>
           </DialogHeader>
           {isLoadingDetails ? (
             <div className="py-8 text-center">
-              <p className="text-muted-foreground">Loading user details...</p>
+              <p className="text-muted-foreground text-sm">Loading user details...</p>
             </div>
           ) : userDetails ? (
-            <div className="space-y-4">
-              <div>
+            <div className="space-y-4 pt-2">
+              <div className="space-y-1.5">
                 <label className="text-sm font-medium">Email</label>
-                <p className="text-sm text-muted-foreground" data-testid="text-detail-email">
+                <p className="text-sm text-muted-foreground break-all" data-testid="text-detail-email">
                   {(userDetails as any).user.email}
                 </p>
               </div>
-              <div>
+              <div className="space-y-1.5">
                 <label className="text-sm font-medium">Role</label>
-                <div className="mt-1">
+                <div className="flex flex-wrap gap-2">
                   <Badge variant={getRoleBadgeVariant((userDetails as any).user.role)}>
                     {(userDetails as any).user.role}
                   </Badge>
                 </div>
               </div>
               {(userDetails as any).profile && (
-                <div>
+                <div className="space-y-1.5">
                   <label className="text-sm font-medium">Profile</label>
-                  <div className="mt-2 space-y-2">
+                  <div className="mt-2 space-y-2.5">
                     {(userDetails as any).profile.name && (
-                      <div>
-                        <span className="text-sm text-muted-foreground">Name: </span>
-                        <span className="text-sm" data-testid="text-detail-profile-name">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1">
+                        <span className="text-sm text-muted-foreground min-w-[100px]">Name:</span>
+                        <span className="text-sm font-medium" data-testid="text-detail-profile-name">
                           {(userDetails as any).profile.name}
                         </span>
                       </div>
                     )}
                     {(userDetails as any).profile.workerRole && (
-                      <div>
-                        <span className="text-sm text-muted-foreground">Worker Role: </span>
-                        <span className="text-sm" data-testid="text-detail-worker-role">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1">
+                        <span className="text-sm text-muted-foreground min-w-[100px]">Worker Role:</span>
+                        <Badge variant="outline" className="text-xs w-fit" data-testid="text-detail-worker-role">
                           {(userDetails as any).profile.workerRole}
-                        </span>
+                        </Badge>
                       </div>
                     )}
                   </div>
