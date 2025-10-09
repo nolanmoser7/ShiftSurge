@@ -60,7 +60,7 @@ export class AdminStorage {
     const result = await db
       .select({ count: sql<number>`count(*)` })
       .from(users)
-      .where(sql`${users.createdAt} >= ${thirtyDaysAgo}`);
+      .where(sql`${users.createdAt} >= ${thirtyDaysAgo.toISOString()}`);
     
     return Number(result[0]?.count || 0);
   }
