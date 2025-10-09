@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { adminStorage } from "./storage-admin";
 import { hashPassword, comparePasswords, requireAuth, requireWorker, requireRestaurant, requireAdmin, type AuthRequest } from "./auth";
 import { z } from "zod";
 import { randomBytes } from "crypto";
@@ -293,22 +294,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { email, password } = req.body;
 
-      console.log("[ADMIN LOGIN] Attempting login for:", email);
-      const user = await storage.getUserByEmail(email);
-      console.log("[ADMIN LOGIN] User found:", !!user, "Role:", user?.role);
+      const user = await adminStorage.getUserByEmail(email);
       if (!user) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
-      // Verify user is a superadmin (temporarily allow restaurant for testing)
-      if (user.role !== "super_admin" && user.email !== "admin@shiftsurge.com") {
-        console.log("[ADMIN LOGIN] User role mismatch. Expected super_admin, got:", user.role);
+      // Verify user is a superadmin
+      if (user.role !== "super_admin") {
         return res.status(403).json({ error: "Superadmin access required" });
       }
 
-      console.log("[ADMIN LOGIN] Comparing password...");
       const valid = await comparePasswords(password, user.password);
-      console.log("[ADMIN LOGIN] Password valid:", valid);
       if (!valid) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
@@ -317,16 +313,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       (req as any).session.adminUserId = user.id;
       (req as any).session.adminUserRole = user.role;
 
-      // Log admin login (temporarily disabled - audit_logs table not in Supabase yet)
-      // TODO: Enable after syncing schema to Supabase
-      /*
-      await storage.createAuditLog({
-        actorId: user.id,
-        action: "ADMIN_LOGIN",
-        subject: "auth",
-        details: JSON.stringify({ email: user.email }),
-      });
-      */
+      // Log admin login
+      await adminStorage.createAuditLogSimple(
+        user.id,
+        "ADMIN_LOGIN",
+        "auth",
+        JSON.stringify({ email: user.email })
+      );
 
       res.json({ user: { id: user.id, email: user.email, role: user.role } });
     } catch (error) {
@@ -337,16 +330,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/admin/logout", requireAdmin, async (req: AuthRequest, res) => {
     try {
-      // Log admin logout (temporarily disabled)
-      // TODO: Enable after syncing schema to Supabase
-      /*
-      await storage.createAuditLog({
-        actorId: req.userId,
-        action: "ADMIN_LOGOUT",
-        subject: "auth",
-        details: JSON.stringify({ userId: req.userId }),
-      });
-      */
+      // Log admin logout
+      await adminStorage.createAuditLogSimple(
+        req.userId!,
+        "ADMIN_LOGOUT",
+        "auth",
+        JSON.stringify({ userId: req.userId })
+      );
 
       // Clear admin session
       delete (req as any).session.adminUserId;
@@ -361,7 +351,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/admin/me", requireAdmin, async (req: AuthRequest, res) => {
     try {
-      const user = await storage.getUser(req.userId!);
+      const user = await adminStorage.getUser(req.userId!);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
@@ -374,8 +364,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Dashboard metrics
   app.get("/api/admin/dashboard", requireAdmin, async (req: AuthRequest, res) => {
     try {
-      const metrics = await storage.getDashboardMetrics();
-      res.json(metrics);
+      const [totalUsers, totalOrgs, activeUsers, recentLogs] = await Promise.all([
+        adminStorage.getUserCount(),
+        adminStorage.getOrganizationCount(),
+        adminStorage.getActiveUserCount(),
+        adminStorage.getRecentAuditLogs(10),
+      ]);
+
+      res.json({
+        totalUsers,
+        totalOrgs,
+        activeUsers,
+        recentLogs,
+      });
     } catch (error) {
       console.error("Dashboard metrics error:", error);
       res.status(500).json({ error: "Failed to fetch metrics" });
@@ -386,16 +387,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/admin/users", requireAdmin, async (req: AuthRequest, res) => {
     try {
       const query = req.query.q as string | undefined;
-      const limit = parseInt(req.query.limit as string) || 50;
-      const offset = parseInt(req.query.offset as string) || 0;
-
-      if (query) {
-        const users = await storage.searchUsers(query);
-        res.json({ users, total: users.length });
-      } else {
-        const result = await storage.getAllUsers(limit, offset);
-        res.json(result);
-      }
+      const users = await adminStorage.getAllUsers(query);
+      res.json(users);
     } catch (error) {
       console.error("Get users error:", error);
       res.status(500).json({ error: "Failed to fetch users" });
@@ -404,11 +397,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/admin/users/:id", requireAdmin, async (req: AuthRequest, res) => {
     try {
-      const userWithProfile = await storage.getUserWithProfile(req.params.id);
-      if (!userWithProfile) {
+      const user = await adminStorage.getUser(req.params.id);
+      if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
-      res.json(userWithProfile);
+      res.json(user);
     } catch (error) {
       console.error("Get user error:", error);
       res.status(500).json({ error: "Failed to fetch user" });
@@ -418,22 +411,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/admin/users/:id", requireAdmin, async (req: AuthRequest, res) => {
     try {
       const updates = req.body;
-      const user = await storage.updateUser(req.params.id, updates);
+      const user = await adminStorage.updateUser(req.params.id, updates);
       
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
 
-      // Log admin action (temporarily disabled)
-      // TODO: Enable after syncing schema to Supabase
-      /*
-      await storage.createAuditLog({
-        actorId: req.userId,
-        action: "UPDATE_USER",
-        subject: `user:${req.params.id}`,
-        details: JSON.stringify({ updates }),
-      });
-      */
+      // Log admin action
+      await adminStorage.createAuditLogSimple(
+        req.userId!,
+        "UPDATE_USER",
+        `user:${req.params.id}`,
+        JSON.stringify({ updates })
+      );
 
       res.json(user);
     } catch (error) {
@@ -445,7 +435,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Organization management
   app.get("/api/admin/organizations", requireAdmin, async (req: AuthRequest, res) => {
     try {
-      const organizations = await storage.getOrganizations();
+      const organizations = await adminStorage.getOrganizations();
       res.json(organizations);
     } catch (error) {
       console.error("Get organizations error:", error);
@@ -453,9 +443,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/admin/organizations", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const { name } = req.body;
+      const organization = await adminStorage.createOrganization({ name });
+
+      // Log admin action
+      await adminStorage.createAuditLogSimple(
+        req.userId!,
+        "CREATE_ORGANIZATION",
+        `organization:${organization.id}`,
+        JSON.stringify({ name })
+      );
+
+      res.json(organization);
+    } catch (error) {
+      console.error("Create organization error:", error);
+      res.status(500).json({ error: "Failed to create organization" });
+    }
+  });
+
   app.get("/api/admin/organizations/:id", requireAdmin, async (req: AuthRequest, res) => {
     try {
-      const organization = await storage.getOrganization(req.params.id);
+      const organization = await adminStorage.getOrganization(req.params.id);
       if (!organization) {
         return res.status(404).json({ error: "Organization not found" });
       }
@@ -469,27 +479,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/admin/organizations/:id", requireAdmin, async (req: AuthRequest, res) => {
     try {
       const updates = req.body;
-      const organization = await storage.updateOrganization(req.params.id, updates);
+      const organization = await adminStorage.updateOrganization(req.params.id, updates);
       
       if (!organization) {
         return res.status(404).json({ error: "Organization not found" });
       }
 
-      // Log admin action (temporarily disabled)
-      // TODO: Enable after syncing schema to Supabase
-      /*
-      await storage.createAuditLog({
-        actorId: req.userId,
-        action: "UPDATE_ORGANIZATION",
-        subject: `organization:${req.params.id}`,
-        details: JSON.stringify({ updates }),
-      });
-      */
+      // Log admin action
+      await adminStorage.createAuditLogSimple(
+        req.userId!,
+        "UPDATE_ORGANIZATION",
+        `organization:${req.params.id}`,
+        JSON.stringify({ updates })
+      );
 
       res.json(organization);
     } catch (error) {
       console.error("Update organization error:", error);
       res.status(500).json({ error: "Failed to update organization" });
+    }
+  });
+
+  app.delete("/api/admin/organizations/:id", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      await adminStorage.deleteOrganization(req.params.id);
+
+      // Log admin action
+      await adminStorage.createAuditLogSimple(
+        req.userId!,
+        "DELETE_ORGANIZATION",
+        `organization:${req.params.id}`,
+        JSON.stringify({ id: req.params.id })
+      );
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete organization error:", error);
+      res.status(500).json({ error: "Failed to delete organization" });
     }
   });
 
@@ -499,45 +525,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const limit = parseInt(req.query.limit as string) || 50;
       const offset = parseInt(req.query.offset as string) || 0;
 
-      const result = await storage.getAuditLogs(limit, offset);
-      res.json(result);
+      const logs = await adminStorage.getAuditLogs(limit, offset);
+      res.json(logs);
     } catch (error) {
       console.error("Get audit logs error:", error);
       res.status(500).json({ error: "Failed to fetch audit logs" });
-    }
-  });
-
-  // Feature flags
-  app.get("/api/admin/feature-flags", requireAdmin, async (req: AuthRequest, res) => {
-    try {
-      const flags = await storage.getFeatureFlags();
-      res.json(flags);
-    } catch (error) {
-      console.error("Get feature flags error:", error);
-      res.status(500).json({ error: "Failed to fetch feature flags" });
-    }
-  });
-
-  app.put("/api/admin/feature-flags/:key", requireAdmin, async (req: AuthRequest, res) => {
-    try {
-      const { enabled, payload } = req.body;
-      const flag = await storage.updateFeatureFlag(req.params.key, enabled, payload);
-
-      // Log admin action (temporarily disabled)
-      // TODO: Enable after syncing schema to Supabase
-      /*
-      await storage.createAuditLog({
-        actorId: req.userId,
-        action: "UPDATE_FEATURE_FLAG",
-        subject: `feature_flag:${req.params.key}`,
-        details: JSON.stringify({ enabled, payload }),
-      });
-      */
-
-      res.json(flag);
-    } catch (error) {
-      console.error("Update feature flag error:", error);
-      res.status(500).json({ error: "Failed to update feature flag" });
     }
   });
 

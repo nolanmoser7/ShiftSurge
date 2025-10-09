@@ -63,10 +63,8 @@ export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction
     return res.status(401).json({ error: "Admin authentication required" });
   }
 
-  // Verify the user has super_admin role (temporarily allow restaurant role for admin@shiftsurge.com for testing)
-  // TODO: Remove this temporary bypass after fixing Supabase enum to include super_admin
-  const isTemporaryAdmin = session.adminUserRole === "restaurant";
-  if (session.adminUserRole !== "super_admin" && !isTemporaryAdmin) {
+  // Verify the user has super_admin role
+  if (session.adminUserRole !== "super_admin") {
     return res.status(403).json({ error: "Superadmin access required" });
   }
 
