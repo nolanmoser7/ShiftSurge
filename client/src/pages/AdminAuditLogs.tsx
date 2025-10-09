@@ -24,12 +24,24 @@ import { formatDistanceToNow } from "date-fns";
 
 export default function AdminAuditLogs() {
   const [page, setPage] = useState(1);
-  const [actionFilter, setActionFilter] = useState("");
+  const [actionFilter, setActionFilter] = useState("ALL");
   const [actorFilter, setActorFilter] = useState("");
   const limit = 50;
+  const offset = (page - 1) * limit;
+
+  // Build query string
+  const params = new URLSearchParams();
+  params.set("limit", limit.toString());
+  params.set("offset", offset.toString());
+  if (actionFilter !== "ALL") {
+    params.set("action", actionFilter);
+  }
+  if (actorFilter) {
+    params.set("actor", actorFilter);
+  }
 
   const { data: logsData, isLoading } = useQuery({
-    queryKey: ["/api/admin/audit-logs", { page, limit, action: actionFilter, actor: actorFilter }],
+    queryKey: [`/api/admin/audit-logs?${params.toString()}`],
   });
 
   const logs = (logsData as any)?.logs || [];
@@ -53,12 +65,15 @@ export default function AdminAuditLogs() {
                     <SelectValue placeholder="All actions" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All actions</SelectItem>
-                    <SelectItem value="user_updated">User Updated</SelectItem>
-                    <SelectItem value="user_created">User Created</SelectItem>
-                    <SelectItem value="org_created">Organization Created</SelectItem>
-                    <SelectItem value="org_updated">Organization Updated</SelectItem>
-                    <SelectItem value="org_deleted">Organization Deleted</SelectItem>
+                    <SelectItem value="ALL">All actions</SelectItem>
+                    <SelectItem value="PROMOTION_CREATED">Promotion Created</SelectItem>
+                    <SelectItem value="PROMOTION_REDEEMED">Promotion Redeemed</SelectItem>
+                    <SelectItem value="WORKER_ADDED">Worker Added</SelectItem>
+                    <SelectItem value="RESTAURANT_ONBOARDED">Restaurant Onboarded</SelectItem>
+                    <SelectItem value="CREATE_ORGANIZATION">Organization Created</SelectItem>
+                    <SelectItem value="UPDATE_ORGANIZATION">Organization Updated</SelectItem>
+                    <SelectItem value="DELETE_ORGANIZATION">Organization Deleted</SelectItem>
+                    <SelectItem value="UPDATE_USER">User Updated</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -108,7 +123,7 @@ export default function AdminAuditLogs() {
                     {logs.map((log: any) => (
                       <TableRow key={log.id} data-testid={`row-log-${log.id}`}>
                         <TableCell data-testid={`text-log-time-${log.id}`}>
-                          {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
+                          {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
                         </TableCell>
                         <TableCell className="font-medium" data-testid={`text-log-action-${log.id}`}>
                           {log.action}

@@ -580,9 +580,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
       const offset = parseInt(req.query.offset as string) || 0;
+      const action = req.query.action as string;
+      const actor = req.query.actor as string;
 
-      const logs = await adminStorage.getAuditLogs(limit, offset);
-      res.json(logs);
+      const result = await adminStorage.getAuditLogs(limit, offset, action, actor);
+      res.json(result);
     } catch (error) {
       console.error("Get audit logs error:", error);
       res.status(500).json({ error: "Failed to fetch audit logs" });

@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, ilike, or, sql, notInArray } from "drizzle-orm";
+import { eq, desc, ilike, or, sql, notInArray, and } from "drizzle-orm";
 import {
   type User,
   type Organization,
@@ -164,16 +164,44 @@ export class AdminStorage {
     return this.createAuditLog({ actorId, action, subject, details });
   }
 
-  async getAuditLogs(limit: number = 50, offset: number = 0): Promise<AuditLog[]> {
+  async getAuditLogs(
+    limit: number = 50, 
+    offset: number = 0,
+    action?: string,
+    actor?: string
+  ): Promise<{ logs: AuditLog[]; total: number }> {
     // Filter to show only business-relevant actions, exclude login/logout
     const excludedActions = ['ADMIN_LOGIN', 'ADMIN_LOGOUT'];
-    return await db
+    
+    // Build where conditions
+    const conditions = [notInArray(auditLogs.action, excludedActions)];
+    
+    if (action) {
+      conditions.push(eq(auditLogs.action, action));
+    }
+    
+    if (actor) {
+      conditions.push(sql`${auditLogs.actor} ILIKE ${`%${actor}%`}`);
+    }
+    
+    // Get total count
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(auditLogs)
+      .where(and(...conditions));
+    
+    const total = Number(countResult[0]?.count || 0);
+    
+    // Get logs
+    const logs = await db
       .select()
       .from(auditLogs)
-      .where(notInArray(auditLogs.action, excludedActions))
+      .where(and(...conditions))
       .orderBy(desc(auditLogs.createdAt))
       .limit(limit)
       .offset(offset);
+    
+    return { logs, total };
   }
 
   async getRecentAuditLogs(limit: number = 10): Promise<AuditLog[]> {
