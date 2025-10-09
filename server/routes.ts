@@ -351,12 +351,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { email, password } = req.body;
 
       const user = await adminStorage.getUserByEmail(email);
+      console.log("Admin login - user fetched:", user ? { id: user.id, email: user.email, role: user.role } : "null");
+      
       if (!user) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
       // Verify user is a superadmin
       if (user.role !== "super_admin") {
+        console.log("Admin login - role check failed. User role:", user.role, "Expected: super_admin");
         return res.status(403).json({ error: "Superadmin access required" });
       }
 

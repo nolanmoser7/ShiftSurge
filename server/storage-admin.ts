@@ -1,82 +1,123 @@
-import { db } from "./db";
-import { eq, desc, ilike, or, sql, notInArray, and } from "drizzle-orm";
+import { supabase } from "./supabase";
 import {
   type User,
   type Organization,
   type InsertOrganization,
   type AuditLog,
   type InsertAuditLog,
-  users,
-  organizations,
-  auditLogs,
-  workerProfiles,
-  restaurantProfiles,
 } from "@shared/schema";
 
 export class AdminStorage {
   // User operations for admin
   async getAllUsers(searchQuery?: string): Promise<any[]> {
-    const baseQuery = db
-      .select({
-        id: users.id,
-        email: users.email,
-        role: users.role,
-        createdAt: users.createdAt,
-        workerRole: workerProfiles.workerRole,
-        workerName: workerProfiles.name,
-        restaurantName: restaurantProfiles.name,
-        organizationId: restaurantProfiles.organizationId,
-      })
-      .from(users)
-      .leftJoin(workerProfiles, eq(users.id, workerProfiles.userId))
-      .leftJoin(restaurantProfiles, eq(users.id, restaurantProfiles.userId))
-      .orderBy(desc(users.createdAt));
+    let query = supabase
+      .from('users')
+      .select(`
+        id,
+        email,
+        role,
+        created_at,
+        worker_profiles!left(worker_role, name),
+        restaurant_profiles!left(name, organization_id)
+      `)
+      .order('created_at', { ascending: false });
 
     if (searchQuery) {
-      return await baseQuery.where(ilike(users.email, `%${searchQuery}%`));
+      query = query.ilike('email', `%${searchQuery}%`);
     }
-    return await baseQuery;
+
+    const { data, error } = await query;
+    
+    if (error) throw error;
+    
+    // Transform the data to match the expected format
+    return (data || []).map((user: any) => ({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      createdAt: user.created_at,
+      workerRole: user.worker_profiles?.[0]?.worker_role || null,
+      workerName: user.worker_profiles?.[0]?.name || null,
+      restaurantName: user.restaurant_profiles?.[0]?.name || null,
+      organizationId: user.restaurant_profiles?.[0]?.organization_id || null,
+    }));
   }
 
   async getUser(id: string): Promise<any | undefined> {
-    const result = await db
-      .select({
-        user: users,
-        workerProfile: workerProfiles,
-        restaurantProfile: restaurantProfiles,
-      })
-      .from(users)
-      .leftJoin(workerProfiles, eq(users.id, workerProfiles.userId))
-      .leftJoin(restaurantProfiles, eq(users.id, restaurantProfiles.userId))
-      .where(eq(users.id, id))
-      .limit(1);
+    const { data, error } = await supabase
+      .from('users')
+      .select(`
+        *,
+        worker_profiles(*),
+        restaurant_profiles(*)
+      `)
+      .eq('id', id)
+      .single();
     
-    if (!result[0]) return undefined;
-    
-    const data = result[0];
+    if (error) {
+      if (error.code === 'PGRST116') return undefined;
+      throw error;
+    }
+
     return {
-      user: data.user,
-      profile: data.workerProfile || data.restaurantProfile || null,
+      user: {
+        id: data.id,
+        email: data.email,
+        password: data.password,
+        role: data.role,
+        createdAt: data.created_at,
+      },
+      profile: data.worker_profiles?.[0] || data.restaurant_profiles?.[0] || null,
     };
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    return result[0];
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') return undefined;
+      throw error;
+    }
+
+    return {
+      id: data.id,
+      email: data.email,
+      password: data.password,
+      role: data.role,
+      createdAt: data.created_at,
+    } as User;
   }
 
   async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
-    const result = await db
-      .update(users)
-      .set(updates)
-      .where(eq(users.id, id))
-      .returning();
-    return result[0];
+    const { data, error } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) throw error;
+
+    return {
+      id: data.id,
+      email: data.email,
+      password: data.password,
+      role: data.role,
+      createdAt: data.created_at,
+    } as User;
   }
 
   async getUserCount(): Promise<number> {
-    const result = await db.select({ count: sql<number>`count(*)` }).from(users);
-    return Number(result[0]?.count || 0);
+    const { count, error } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true });
+    
+    if (error) throw error;
+    return count || 0;
   }
 
   async getActiveUserCount(): Promise<number> {
@@ -84,75 +125,198 @@ export class AdminStorage {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    const result = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(users)
-      .where(sql`${users.createdAt} >= ${thirtyDaysAgo.toISOString()}`);
+    const { count, error } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .gte('created_at', thirtyDaysAgo.toISOString());
     
-    return Number(result[0]?.count || 0);
+    if (error) throw error;
+    return count || 0;
   }
 
   // Organization operations
   async getOrganizations(): Promise<any[]> {
-    // Join with restaurant profiles to show restaurant account details
-    const result = await db
-      .select({
-        id: organizations.id,
-        name: organizations.name,
-        address: organizations.address,
-        neighborhoodId: organizations.neighborhoodId,
-        logoUrl: organizations.logoUrl,
-        subscriptionStatus: organizations.subscriptionStatus,
-        isActive: organizations.isActive,
-        createdAt: organizations.createdAt,
-        restaurantCount: sql<number>`count(distinct ${restaurantProfiles.id})`,
-        restaurantUsers: sql<string>`string_agg(distinct ${users.email}, ', ')`,
-      })
-      .from(organizations)
-      .leftJoin(restaurantProfiles, eq(organizations.id, restaurantProfiles.organizationId))
-      .leftJoin(users, eq(restaurantProfiles.userId, users.id))
-      .groupBy(organizations.id)
-      .orderBy(desc(organizations.createdAt));
+    const { data, error } = await supabase
+      .from('organizations')
+      .select(`
+        id,
+        name,
+        address,
+        neighborhood_id,
+        logo_url,
+        subscription_status,
+        is_active,
+        created_at,
+        restaurant_profiles(
+          id,
+          users(email)
+        )
+      `)
+      .order('created_at', { ascending: false });
     
-    return result;
+    if (error) throw error;
+    
+    // Transform the data to match expected format
+    return (data || []).map((org: any) => ({
+      id: org.id,
+      name: org.name,
+      address: org.address,
+      neighborhoodId: org.neighborhood_id,
+      logoUrl: org.logo_url,
+      subscriptionStatus: org.subscription_status,
+      isActive: org.is_active,
+      createdAt: org.created_at,
+      restaurantCount: org.restaurant_profiles?.length || 0,
+      restaurantUsers: org.restaurant_profiles
+        ?.map((rp: any) => rp.users?.email)
+        .filter(Boolean)
+        .join(', ') || '',
+    }));
   }
 
   async getOrganization(id: string): Promise<Organization | undefined> {
-    const result = await db
-      .select()
-      .from(organizations)
-      .where(eq(organizations.id, id))
-      .limit(1);
-    return result[0];
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') return undefined;
+      throw error;
+    }
+
+    return {
+      id: data.id,
+      name: data.name,
+      address: data.address,
+      neighborhoodId: data.neighborhood_id,
+      logoUrl: data.logo_url,
+      subscriptionStatus: data.subscription_status,
+      subscriptionPlanId: data.subscription_plan_id,
+      stripeCustomerId: data.stripe_customer_id,
+      stripeSubscriptionId: data.stripe_subscription_id,
+      trialEndsAt: data.trial_ends_at,
+      isActive: data.is_active,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    } as Organization;
   }
 
   async createOrganization(org: InsertOrganization): Promise<Organization> {
-    const result = await db.insert(organizations).values(org).returning();
-    return result[0];
+    const { data, error } = await supabase
+      .from('organizations')
+      .insert({
+        name: org.name,
+        address: org.address,
+        neighborhood_id: org.neighborhoodId,
+        logo_url: org.logoUrl,
+        subscription_status: org.subscriptionStatus,
+        subscription_plan_id: org.subscriptionPlanId,
+        stripe_customer_id: org.stripeCustomerId,
+        stripe_subscription_id: org.stripeSubscriptionId,
+        trial_ends_at: org.trialEndsAt,
+        is_active: org.isActive,
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+
+    return {
+      id: data.id,
+      name: data.name,
+      address: data.address,
+      neighborhoodId: data.neighborhood_id,
+      logoUrl: data.logo_url,
+      subscriptionStatus: data.subscription_status,
+      subscriptionPlanId: data.subscription_plan_id,
+      stripeCustomerId: data.stripe_customer_id,
+      stripeSubscriptionId: data.stripe_subscription_id,
+      trialEndsAt: data.trial_ends_at,
+      isActive: data.is_active,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    } as Organization;
   }
 
   async updateOrganization(id: string, updates: Partial<Organization>): Promise<Organization | undefined> {
-    const result = await db
-      .update(organizations)
-      .set(updates)
-      .where(eq(organizations.id, id))
-      .returning();
-    return result[0];
+    // Convert camelCase to snake_case for Supabase
+    const snakeCaseUpdates: any = {};
+    if (updates.name !== undefined) snakeCaseUpdates.name = updates.name;
+    if (updates.address !== undefined) snakeCaseUpdates.address = updates.address;
+    if (updates.neighborhoodId !== undefined) snakeCaseUpdates.neighborhood_id = updates.neighborhoodId;
+    if (updates.logoUrl !== undefined) snakeCaseUpdates.logo_url = updates.logoUrl;
+    if (updates.subscriptionStatus !== undefined) snakeCaseUpdates.subscription_status = updates.subscriptionStatus;
+    if (updates.isActive !== undefined) snakeCaseUpdates.is_active = updates.isActive;
+
+    const { data, error } = await supabase
+      .from('organizations')
+      .update(snakeCaseUpdates)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) throw error;
+
+    return {
+      id: data.id,
+      name: data.name,
+      address: data.address,
+      neighborhoodId: data.neighborhood_id,
+      logoUrl: data.logo_url,
+      subscriptionStatus: data.subscription_status,
+      subscriptionPlanId: data.subscription_plan_id,
+      stripeCustomerId: data.stripe_customer_id,
+      stripeSubscriptionId: data.stripe_subscription_id,
+      trialEndsAt: data.trial_ends_at,
+      isActive: data.is_active,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    } as Organization;
   }
 
   async deleteOrganization(id: string): Promise<void> {
-    await db.delete(organizations).where(eq(organizations.id, id));
+    const { error } = await supabase
+      .from('organizations')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
   }
 
   async getOrganizationCount(): Promise<number> {
-    const result = await db.select({ count: sql<number>`count(*)` }).from(organizations);
-    return Number(result[0]?.count || 0);
+    const { count, error } = await supabase
+      .from('organizations')
+      .select('*', { count: 'exact', head: true });
+    
+    if (error) throw error;
+    return count || 0;
   }
 
   // Audit log operations
   async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
-    const result = await db.insert(auditLogs).values(log).returning();
-    return result[0];
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .insert({
+        actor_id: log.actorId,
+        action: log.action,
+        subject: log.subject,
+        details: log.details,
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+
+    return {
+      id: data.id,
+      actorId: data.actor_id,
+      action: data.action,
+      subject: data.subject,
+      details: data.details,
+      createdAt: data.created_at,
+    } as AuditLog;
   }
 
   async createAuditLogSimple(
@@ -173,46 +337,59 @@ export class AdminStorage {
     // Filter to show only business-relevant actions, exclude login/logout
     const excludedActions = ['ADMIN_LOGIN', 'ADMIN_LOGOUT'];
     
-    // Build where conditions
-    const conditions = [notInArray(auditLogs.action, excludedActions)];
+    // Build query with filters
+    let query = supabase
+      .from('audit_logs')
+      .select('*', { count: 'exact' })
+      .not('action', 'in', `(${excludedActions.join(',')})`)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
     
     if (action) {
-      conditions.push(eq(auditLogs.action, action));
+      query = query.eq('action', action);
     }
     
     if (actor) {
-      conditions.push(sql`${auditLogs.actor} ILIKE ${`%${actor}%`}`);
+      query = query.ilike('actor', `%${actor}%`);
     }
     
-    // Get total count
-    const countResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(auditLogs)
-      .where(and(...conditions));
+    const { data, error, count } = await query;
     
-    const total = Number(countResult[0]?.count || 0);
+    if (error) throw error;
     
-    // Get logs
-    const logs = await db
-      .select()
-      .from(auditLogs)
-      .where(and(...conditions))
-      .orderBy(desc(auditLogs.createdAt))
-      .limit(limit)
-      .offset(offset);
-    
-    return { logs, total };
+    const logs = (data || []).map((log: any) => ({
+      id: log.id,
+      actorId: log.actor_id,
+      action: log.action,
+      subject: log.subject,
+      details: log.details,
+      createdAt: log.created_at,
+    })) as AuditLog[];
+
+    return { logs, total: count || 0 };
   }
 
   async getRecentAuditLogs(limit: number = 10): Promise<AuditLog[]> {
     // Filter to show only business-relevant actions, exclude login/logout
     const excludedActions = ['ADMIN_LOGIN', 'ADMIN_LOGOUT'];
-    return await db
-      .select()
-      .from(auditLogs)
-      .where(notInArray(auditLogs.action, excludedActions))
-      .orderBy(desc(auditLogs.createdAt))
+    
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .not('action', 'in', `(${excludedActions.join(',')})`)
+      .order('created_at', { ascending: false })
       .limit(limit);
+    
+    if (error) throw error;
+    
+    return (data || []).map((log: any) => ({
+      id: log.id,
+      actorId: log.actor_id,
+      action: log.action,
+      subject: log.subject,
+      details: log.details,
+      createdAt: log.created_at,
+    })) as AuditLog[];
   }
 }
 
