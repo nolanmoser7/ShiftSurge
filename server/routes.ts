@@ -357,9 +357,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
-      // Verify user is a superadmin
-      if (user.role !== "super_admin") {
-        console.log("Admin login - role check failed. User role:", user.role, "Expected: super_admin");
+      // Verify user is a superadmin (check role OR specific admin email)
+      // TODO: Once super_admin enum is added to Supabase, remove email check
+      const isAdmin = user.role === "super_admin" || email === "admin@shiftsurge.com";
+      
+      if (!isAdmin) {
+        console.log("Admin login - access denied. User role:", user.role, "Email:", email);
         return res.status(403).json({ error: "Superadmin access required" });
       }
 
@@ -370,17 +373,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Set admin session (separate from regular user session)
       (req as any).session.adminUserId = user.id;
-      (req as any).session.adminUserRole = user.role;
+      // Always set role as super_admin for admin users
+      (req as any).session.adminUserRole = "super_admin";
 
-      // Log admin login
-      await adminStorage.createAuditLogSimple(
-        user.id,
-        "ADMIN_LOGIN",
-        "auth",
-        JSON.stringify({ email: user.email })
-      );
+      // Try to log admin login (gracefully handle if audit_logs table doesn't exist yet)
+      try {
+        await adminStorage.createAuditLogSimple(
+          user.id,
+          "ADMIN_LOGIN",
+          "auth",
+          JSON.stringify({ email: user.email })
+        );
+      } catch (auditError: any) {
+        console.warn("Could not create audit log (table may not exist):", auditError.message);
+      }
 
-      res.json({ user: { id: user.id, email: user.email, role: user.role } });
+      res.json({ user: { id: user.id, email: user.email, role: "super_admin" } });
     } catch (error) {
       console.error("Admin login error:", error);
       res.status(400).json({ error: "Login failed" });
@@ -414,7 +422,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
-      res.json({ user: { id: user.id, email: user.email, role: user.role } });
+      // Always return super_admin role for admin sessions (workaround for missing enum)
+      res.json({ user: { id: user.id, email: user.email, role: "super_admin" } });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch admin user" });
     }

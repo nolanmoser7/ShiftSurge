@@ -10,37 +10,62 @@ import {
 export class AdminStorage {
   // User operations for admin
   async getAllUsers(searchQuery?: string): Promise<any[]> {
-    let query = supabase
-      .from('users')
-      .select(`
-        id,
-        email,
-        role,
-        created_at,
-        worker_profiles!left(worker_role, name),
-        restaurant_profiles!left(name, organization_id)
-      `)
-      .order('created_at', { ascending: false });
+    try {
+      let query = supabase
+        .from('users')
+        .select(`
+          id,
+          email,
+          role,
+          created_at,
+          worker_profiles!left(worker_role, name),
+          restaurant_profiles!left(name)
+        `)
+        .order('created_at', { ascending: false });
 
-    if (searchQuery) {
-      query = query.ilike('email', `%${searchQuery}%`);
+      if (searchQuery) {
+        query = query.ilike('email', `%${searchQuery}%`);
+      }
+
+      const { data, error } = await query;
+      
+      if (error) {
+        // Log error but try simpler query if join fails
+        console.warn('Users query with profiles failed, trying fallback:', error.message);
+        const fallbackQuery = await supabase
+          .from('users')
+          .select('id, email, role, created_at')
+          .order('created_at', { ascending: false });
+        
+        if (fallbackQuery.error) throw fallbackQuery.error;
+        
+        return (fallbackQuery.data || []).map((user: any) => ({
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          createdAt: user.created_at,
+          workerRole: null,
+          workerName: null,
+          restaurantName: null,
+          organizationId: null,
+        }));
+      }
+      
+      // Transform the data to match the expected format
+      return (data || []).map((user: any) => ({
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        createdAt: user.created_at,
+        workerRole: user.worker_profiles?.[0]?.worker_role || null,
+        workerName: user.worker_profiles?.[0]?.name || null,
+        restaurantName: user.restaurant_profiles?.[0]?.name || null,
+        organizationId: null, // organization_id column doesn't exist yet
+      }));
+    } catch (err: any) {
+      console.error('Error fetching users:', err.message);
+      return [];
     }
-
-    const { data, error } = await query;
-    
-    if (error) throw error;
-    
-    // Transform the data to match the expected format
-    return (data || []).map((user: any) => ({
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      createdAt: user.created_at,
-      workerRole: user.worker_profiles?.[0]?.worker_role || null,
-      workerName: user.worker_profiles?.[0]?.name || null,
-      restaurantName: user.restaurant_profiles?.[0]?.name || null,
-      organizationId: user.restaurant_profiles?.[0]?.organization_id || null,
-    }));
   }
 
   async getUser(id: string): Promise<any | undefined> {
@@ -295,28 +320,41 @@ export class AdminStorage {
   }
 
   // Audit log operations
-  async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
-    const { data, error } = await supabase
-      .from('audit_logs')
-      .insert({
-        actor_id: log.actorId,
-        action: log.action,
-        subject: log.subject,
-        details: log.details,
-      })
-      .select()
-      .single();
-    
-    if (error) throw error;
+  async createAuditLog(log: InsertAuditLog): Promise<AuditLog | null> {
+    try {
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .insert({
+          actor_id: log.actorId,
+          action: log.action,
+          subject: log.subject,
+          details: log.details,
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        // If table doesn't exist, silently skip audit logging
+        if (error.code === 'PGRST205' || error.message?.includes('audit_logs')) {
+          console.warn('Audit logs table not found, skipping audit log');
+          return null;
+        }
+        throw error;
+      }
 
-    return {
-      id: data.id,
-      actorId: data.actor_id,
-      action: data.action,
-      subject: data.subject,
-      details: data.details,
-      createdAt: data.created_at,
-    } as AuditLog;
+      return {
+        id: data.id,
+        actorId: data.actor_id,
+        action: data.action,
+        subject: data.subject,
+        details: data.details,
+        createdAt: data.created_at,
+      } as AuditLog;
+    } catch (err: any) {
+      // Gracefully handle missing table - don't fail the operation
+      console.warn('Could not create audit log:', err.message);
+      return null;
+    }
   }
 
   async createAuditLogSimple(
@@ -324,7 +362,7 @@ export class AdminStorage {
     action: string,
     subject: string,
     details?: string
-  ): Promise<AuditLog> {
+  ): Promise<AuditLog | null> {
     return this.createAuditLog({ actorId, action, subject, details });
   }
 
@@ -334,62 +372,86 @@ export class AdminStorage {
     action?: string,
     actor?: string
   ): Promise<{ logs: AuditLog[]; total: number }> {
-    // Filter to show only business-relevant actions, exclude login/logout
-    const excludedActions = ['ADMIN_LOGIN', 'ADMIN_LOGOUT'];
-    
-    // Build query with filters
-    let query = supabase
-      .from('audit_logs')
-      .select('*', { count: 'exact' })
-      .not('action', 'in', `(${excludedActions.join(',')})`)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-    
-    if (action) {
-      query = query.eq('action', action);
-    }
-    
-    if (actor) {
-      query = query.ilike('actor', `%${actor}%`);
-    }
-    
-    const { data, error, count } = await query;
-    
-    if (error) throw error;
-    
-    const logs = (data || []).map((log: any) => ({
-      id: log.id,
-      actorId: log.actor_id,
-      action: log.action,
-      subject: log.subject,
-      details: log.details,
-      createdAt: log.created_at,
-    })) as AuditLog[];
+    try {
+      // Filter to show only business-relevant actions, exclude login/logout
+      const excludedActions = ['ADMIN_LOGIN', 'ADMIN_LOGOUT'];
+      
+      // Build query with filters
+      let query = supabase
+        .from('audit_logs')
+        .select('*', { count: 'exact' })
+        .not('action', 'in', `(${excludedActions.join(',')})`)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+      
+      if (action) {
+        query = query.eq('action', action);
+      }
+      
+      if (actor) {
+        query = query.ilike('actor', `%${actor}%`);
+      }
+      
+      const { data, error, count } = await query;
+      
+      if (error) {
+        // If table doesn't exist, return empty array
+        if (error.code === 'PGRST205' || error.message?.includes('audit_logs')) {
+          console.warn('Audit logs table not found, returning empty results');
+          return { logs: [], total: 0 };
+        }
+        throw error;
+      }
+      
+      const logs = (data || []).map((log: any) => ({
+        id: log.id,
+        actorId: log.actor_id,
+        action: log.action,
+        subject: log.subject,
+        details: log.details,
+        createdAt: log.created_at,
+      })) as AuditLog[];
 
-    return { logs, total: count || 0 };
+      return { logs, total: count || 0 };
+    } catch (err: any) {
+      console.warn('Could not fetch audit logs:', err.message);
+      return { logs: [], total: 0 };
+    }
   }
 
   async getRecentAuditLogs(limit: number = 10): Promise<AuditLog[]> {
-    // Filter to show only business-relevant actions, exclude login/logout
-    const excludedActions = ['ADMIN_LOGIN', 'ADMIN_LOGOUT'];
-    
-    const { data, error } = await supabase
-      .from('audit_logs')
-      .select('*')
-      .not('action', 'in', `(${excludedActions.join(',')})`)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-    
-    if (error) throw error;
-    
-    return (data || []).map((log: any) => ({
-      id: log.id,
-      actorId: log.actor_id,
-      action: log.action,
-      subject: log.subject,
-      details: log.details,
-      createdAt: log.created_at,
-    })) as AuditLog[];
+    try {
+      // Filter to show only business-relevant actions, exclude login/logout
+      const excludedActions = ['ADMIN_LOGIN', 'ADMIN_LOGOUT'];
+      
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('*')
+        .not('action', 'in', `(${excludedActions.join(',')})`)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      
+      if (error) {
+        // If table doesn't exist, return empty array
+        if (error.code === 'PGRST205' || error.message?.includes('audit_logs')) {
+          console.warn('Audit logs table not found, returning empty results');
+          return [];
+        }
+        throw error;
+      }
+      
+      return (data || []).map((log: any) => ({
+        id: log.id,
+        actorId: log.actor_id,
+        action: log.action,
+        subject: log.subject,
+        details: log.details,
+        createdAt: log.created_at,
+      })) as AuditLog[];
+    } catch (err: any) {
+      console.warn('Could not fetch recent audit logs:', err.message);
+      return [];
+    }
   }
 }
 
