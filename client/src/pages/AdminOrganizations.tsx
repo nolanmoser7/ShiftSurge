@@ -142,6 +142,8 @@ export default function AdminOrganizations() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
+                    <TableHead>Address</TableHead>
+                    <TableHead>Restaurant Users</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -152,8 +154,16 @@ export default function AdminOrganizations() {
                       <TableCell className="font-medium" data-testid={`text-org-name-${org.id}`}>
                         {org.name}
                       </TableCell>
+                      <TableCell data-testid={`text-org-address-${org.id}`}>
+                        {org.address || "-"}
+                      </TableCell>
+                      <TableCell data-testid={`text-org-users-${org.id}`}>
+                        <div className="max-w-xs truncate">
+                          {org.restaurantUsers || "No users"}
+                        </div>
+                      </TableCell>
                       <TableCell data-testid={`text-org-created-${org.id}`}>
-                        {formatDistanceToNow(new Date(org.created_at), { addSuffix: true })}
+                        {formatDistanceToNow(new Date(org.createdAt), { addSuffix: true })}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-2">

@@ -1,8 +1,81 @@
 import { useQuery } from "@tanstack/react-query";
 import AdminLayout from "@/components/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Users, Building2, Activity, FileText } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+
+// Helper to format audit log entries for display
+function formatAuditLogMessage(log: any): { title: string; description: string; variant: any } {
+  try {
+    const details = log.details ? JSON.parse(log.details) : {};
+    
+    switch (log.action) {
+      case "PROMOTION_CREATED":
+        return {
+          title: "Promotion Created",
+          description: `"${details.title}" - ${details.discountType}: ${details.discountValue}`,
+          variant: "default"
+        };
+      
+      case "PROMOTION_REDEEMED":
+        return {
+          title: "Promotion Redeemed",
+          description: `${details.workerName || "Worker"} redeemed "${details.promotionTitle}"`,
+          variant: "secondary"
+        };
+      
+      case "WORKER_ADDED":
+        return {
+          title: "Worker Added",
+          description: `${details.name} (${details.workerRole}) - ${details.email}`,
+          variant: "outline"
+        };
+      
+      case "RESTAURANT_ONBOARDED":
+        return {
+          title: "Restaurant Onboarded",
+          description: `${details.name} - ${details.email}`,
+          variant: "outline"
+        };
+      
+      case "CREATE_ORGANIZATION":
+        return {
+          title: "Organization Created",
+          description: `${details.name}`,
+          variant: "default"
+        };
+      
+      case "UPDATE_ORGANIZATION":
+      case "DELETE_ORGANIZATION":
+        return {
+          title: log.action.replace("_", " ").toLowerCase().replace(/\b\w/g, (l: string) => l.toUpperCase()),
+          description: log.subject,
+          variant: "outline"
+        };
+      
+      case "UPDATE_USER":
+        return {
+          title: "User Updated",
+          description: log.subject,
+          variant: "outline"
+        };
+      
+      default:
+        return {
+          title: log.action,
+          description: log.subject,
+          variant: "outline"
+        };
+    }
+  } catch (e) {
+    return {
+      title: log.action,
+      description: log.subject,
+      variant: "outline"
+    };
+  }
+}
 
 export default function AdminDashboard() {
   const { data: metrics, isLoading } = useQuery({
@@ -89,30 +162,30 @@ export default function AdminDashboard() {
           <CardContent>
             {metricsData?.recentLogs && metricsData.recentLogs.length > 0 ? (
               <div className="space-y-3">
-                {metricsData.recentLogs.map((log: any) => (
-                  <div
-                    key={log.id}
-                    className="flex items-start justify-between border-b pb-3 last:border-0"
-                    data-testid={`log-${log.id}`}
-                  >
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium" data-testid={`log-action-${log.id}`}>
-                        {log.action}
-                      </p>
-                      <p className="text-sm text-muted-foreground" data-testid={`log-subject-${log.id}`}>
-                        {log.subject}
-                      </p>
-                      {log.details && (
-                        <p className="text-xs text-muted-foreground" data-testid={`log-details-${log.id}`}>
-                          {log.details}
+                {metricsData.recentLogs.map((log: any) => {
+                  const formatted = formatAuditLogMessage(log);
+                  return (
+                    <div
+                      key={log.id}
+                      className="flex items-start justify-between border-b pb-3 last:border-0"
+                      data-testid={`log-${log.id}`}
+                    >
+                      <div className="space-y-1 flex-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={formatted.variant as any} data-testid={`log-action-${log.id}`}>
+                            {formatted.title}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground" data-testid={`log-description-${log.id}`}>
+                          {formatted.description}
                         </p>
-                      )}
+                      </div>
+                      <p className="text-xs text-muted-foreground whitespace-nowrap ml-4" data-testid={`log-time-${log.id}`}>
+                        {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground whitespace-nowrap" data-testid={`log-time-${log.id}`}>
-                      {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground" data-testid="text-no-logs">

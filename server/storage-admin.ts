@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, ilike, or, sql } from "drizzle-orm";
+import { eq, desc, ilike, or, sql, notInArray } from "drizzle-orm";
 import {
   type User,
   type Organization,
@@ -9,28 +9,55 @@ import {
   users,
   organizations,
   auditLogs,
+  workerProfiles,
+  restaurantProfiles,
 } from "@shared/schema";
 
 export class AdminStorage {
   // User operations for admin
-  async getAllUsers(searchQuery?: string): Promise<User[]> {
+  async getAllUsers(searchQuery?: string): Promise<any[]> {
+    const baseQuery = db
+      .select({
+        id: users.id,
+        email: users.email,
+        role: users.role,
+        createdAt: users.createdAt,
+        workerRole: workerProfiles.workerRole,
+        workerName: workerProfiles.name,
+        restaurantName: restaurantProfiles.name,
+        organizationId: restaurantProfiles.organizationId,
+      })
+      .from(users)
+      .leftJoin(workerProfiles, eq(users.id, workerProfiles.userId))
+      .leftJoin(restaurantProfiles, eq(users.id, restaurantProfiles.userId))
+      .orderBy(desc(users.createdAt));
+
     if (searchQuery) {
-      return await db
-        .select()
-        .from(users)
-        .where(
-          or(
-            ilike(users.email, `%${searchQuery}%`)
-          )
-        )
-        .orderBy(desc(users.createdAt));
+      return await baseQuery.where(ilike(users.email, `%${searchQuery}%`));
     }
-    return await db.select().from(users).orderBy(desc(users.createdAt));
+    return await baseQuery;
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
-    return result[0];
+  async getUser(id: string): Promise<any | undefined> {
+    const result = await db
+      .select({
+        user: users,
+        workerProfile: workerProfiles,
+        restaurantProfile: restaurantProfiles,
+      })
+      .from(users)
+      .leftJoin(workerProfiles, eq(users.id, workerProfiles.userId))
+      .leftJoin(restaurantProfiles, eq(users.id, restaurantProfiles.userId))
+      .where(eq(users.id, id))
+      .limit(1);
+    
+    if (!result[0]) return undefined;
+    
+    const data = result[0];
+    return {
+      user: data.user,
+      profile: data.workerProfile || data.restaurantProfile || null,
+    };
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
@@ -66,8 +93,28 @@ export class AdminStorage {
   }
 
   // Organization operations
-  async getOrganizations(): Promise<Organization[]> {
-    return await db.select().from(organizations).orderBy(desc(organizations.createdAt));
+  async getOrganizations(): Promise<any[]> {
+    // Join with restaurant profiles to show restaurant account details
+    const result = await db
+      .select({
+        id: organizations.id,
+        name: organizations.name,
+        address: organizations.address,
+        neighborhoodId: organizations.neighborhoodId,
+        logoUrl: organizations.logoUrl,
+        subscriptionStatus: organizations.subscriptionStatus,
+        isActive: organizations.isActive,
+        createdAt: organizations.createdAt,
+        restaurantCount: sql<number>`count(distinct ${restaurantProfiles.id})`,
+        restaurantUsers: sql<string>`string_agg(distinct ${users.email}, ', ')`,
+      })
+      .from(organizations)
+      .leftJoin(restaurantProfiles, eq(organizations.id, restaurantProfiles.organizationId))
+      .leftJoin(users, eq(restaurantProfiles.userId, users.id))
+      .groupBy(organizations.id)
+      .orderBy(desc(organizations.createdAt));
+    
+    return result;
   }
 
   async getOrganization(id: string): Promise<Organization | undefined> {
@@ -118,18 +165,24 @@ export class AdminStorage {
   }
 
   async getAuditLogs(limit: number = 50, offset: number = 0): Promise<AuditLog[]> {
+    // Filter to show only business-relevant actions, exclude login/logout
+    const excludedActions = ['ADMIN_LOGIN', 'ADMIN_LOGOUT'];
     return await db
       .select()
       .from(auditLogs)
+      .where(notInArray(auditLogs.action, excludedActions))
       .orderBy(desc(auditLogs.createdAt))
       .limit(limit)
       .offset(offset);
   }
 
   async getRecentAuditLogs(limit: number = 10): Promise<AuditLog[]> {
+    // Filter to show only business-relevant actions, exclude login/logout
+    const excludedActions = ['ADMIN_LOGIN', 'ADMIN_LOGOUT'];
     return await db
       .select()
       .from(auditLogs)
+      .where(notInArray(auditLogs.action, excludedActions))
       .orderBy(desc(auditLogs.createdAt))
       .limit(limit);
   }

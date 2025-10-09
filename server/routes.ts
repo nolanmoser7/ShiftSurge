@@ -47,6 +47,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           workerRole: data.workerRole || "other",
           isVerified: false,
         });
+
+        // Log business action for admin audit
+        await adminStorage.createAuditLogSimple(
+          user.id,
+          "WORKER_ADDED",
+          `worker:${user.id}`,
+          JSON.stringify({ 
+            email: user.email,
+            name: data.name,
+            workerRole: data.workerRole || "other"
+          })
+        );
       } else {
         // Create organization first
         const organization = await storage.createOrganization({
@@ -61,6 +73,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           organizationId: organization.id,
           name: data.name,
         });
+
+        // Log business action for admin audit
+        await adminStorage.createAuditLogSimple(
+          user.id,
+          "RESTAURANT_ONBOARDED",
+          `restaurant:${user.id}`,
+          JSON.stringify({ 
+            email: user.email,
+            name: data.name,
+            organizationId: organization.id,
+            address: data.address
+          })
+        );
       }
 
       // Set session
@@ -165,6 +190,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const promotion = await storage.createPromotion(promotionData);
+
+      // Log business action for admin audit
+      await adminStorage.createAuditLogSimple(
+        req.userId!,
+        "PROMOTION_CREATED",
+        `promotion:${promotion.id}`,
+        JSON.stringify({ 
+          restaurantId: req.userId,
+          organizationId: restaurantProfile.organizationId,
+          title: promotion.title,
+          discountType: promotion.discountType,
+          discountValue: promotion.discountValue
+        })
+      );
 
       res.json(promotion);
     } catch (error) {
@@ -281,6 +320,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Mark the claim as redeemed
       await storage.updateClaim(claim.id, { isRedeemed: true });
+
+      // Log business action for admin audit
+      const promotion = await storage.getPromotion(claim.promotionId);
+      const workerProfile = await storage.getWorkerProfile(claim.workerId);
+      await adminStorage.createAuditLogSimple(
+        req.userId!,
+        "PROMOTION_REDEEMED",
+        `redemption:${redemption.id}`,
+        JSON.stringify({ 
+          promotionId: claim.promotionId,
+          promotionTitle: promotion?.title,
+          workerId: claim.workerId,
+          workerName: workerProfile?.name,
+          restaurantId: req.userId,
+          organizationId: restaurantProfile.organizationId
+        })
+      );
 
       res.json(redemption);
     } catch (error) {

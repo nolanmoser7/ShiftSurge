@@ -121,6 +121,7 @@ export default function AdminUsers() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Email</TableHead>
+                    <TableHead>Name</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead>Actions</TableHead>
@@ -132,10 +133,20 @@ export default function AdminUsers() {
                       <TableCell className="font-medium" data-testid={`text-user-email-${user.id}`}>
                         {user.email}
                       </TableCell>
+                      <TableCell data-testid={`text-user-name-${user.id}`}>
+                        {user.workerName || user.restaurantName || "-"}
+                      </TableCell>
                       <TableCell>
-                        <Badge variant={getRoleBadgeVariant(user.role)} data-testid={`badge-role-${user.id}`}>
-                          {user.role}
-                        </Badge>
+                        <div className="flex flex-col gap-1">
+                          <Badge variant={getRoleBadgeVariant(user.role)} data-testid={`badge-role-${user.id}`}>
+                            {user.role}
+                          </Badge>
+                          {user.workerRole && (
+                            <Badge variant="outline" className="text-xs" data-testid={`badge-worker-role-${user.id}`}>
+                              {user.workerRole}
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell data-testid={`text-user-created-${user.id}`}>
                         {formatDistanceToNow(new Date(user.createdAt), { addSuffix: true })}
@@ -198,11 +209,11 @@ export default function AdminUsers() {
                         </span>
                       </div>
                     )}
-                    {(userDetails as any).profile.worker_role && (
+                    {(userDetails as any).profile.workerRole && (
                       <div>
                         <span className="text-sm text-muted-foreground">Worker Role: </span>
                         <span className="text-sm" data-testid="text-detail-worker-role">
-                          {(userDetails as any).profile.worker_role}
+                          {(userDetails as any).profile.workerRole}
                         </span>
                       </div>
                     )}
