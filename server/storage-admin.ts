@@ -161,162 +161,231 @@ export class AdminStorage {
 
   // Organization operations
   async getOrganizations(): Promise<any[]> {
-    const { data, error } = await supabase
-      .from('organizations')
-      .select(`
-        id,
-        name,
-        address,
-        neighborhood_id,
-        logo_url,
-        subscription_status,
-        is_active,
-        created_at,
-        restaurant_profiles(
+    try {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select(`
           id,
-          users(email)
-        )
-      `)
-      .order('created_at', { ascending: false });
-    
-    if (error) throw error;
-    
-    // Transform the data to match expected format
-    return (data || []).map((org: any) => ({
-      id: org.id,
-      name: org.name,
-      address: org.address,
-      neighborhoodId: org.neighborhood_id,
-      logoUrl: org.logo_url,
-      subscriptionStatus: org.subscription_status,
-      isActive: org.is_active,
-      createdAt: org.created_at,
-      restaurantCount: org.restaurant_profiles?.length || 0,
-      restaurantUsers: org.restaurant_profiles
-        ?.map((rp: any) => rp.users?.email)
-        .filter(Boolean)
-        .join(', ') || '',
-    }));
+          name,
+          address,
+          neighborhood_id,
+          logo_url,
+          subscription_status,
+          is_active,
+          created_at,
+          restaurant_profiles(
+            id,
+            users(email)
+          )
+        `)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        // If table doesn't exist, return empty array
+        if (error.code === 'PGRST205' || error.message?.includes('organizations')) {
+          console.warn('Organizations table not found, returning empty results');
+          return [];
+        }
+        throw error;
+      }
+      
+      // Transform the data to match expected format
+      return (data || []).map((org: any) => ({
+        id: org.id,
+        name: org.name,
+        address: org.address,
+        neighborhoodId: org.neighborhood_id,
+        logoUrl: org.logo_url,
+        subscriptionStatus: org.subscription_status,
+        isActive: org.is_active,
+        createdAt: org.created_at,
+        restaurantCount: org.restaurant_profiles?.length || 0,
+        restaurantUsers: org.restaurant_profiles
+          ?.map((rp: any) => rp.users?.email)
+          .filter(Boolean)
+          .join(', ') || '',
+      }));
+    } catch (err: any) {
+      console.warn('Could not fetch organizations:', err.message);
+      return [];
+    }
   }
 
   async getOrganization(id: string): Promise<Organization | undefined> {
-    const { data, error } = await supabase
-      .from('organizations')
-      .select('*')
-      .eq('id', id)
-      .single();
-    
-    if (error) {
-      if (error.code === 'PGRST116') return undefined;
-      throw error;
-    }
+    try {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) {
+        if (error.code === 'PGRST116') return undefined;
+        // If table doesn't exist, return undefined
+        if (error.code === 'PGRST205' || error.message?.includes('organizations')) {
+          console.warn('Organizations table not found');
+          return undefined;
+        }
+        throw error;
+      }
 
-    return {
-      id: data.id,
-      name: data.name,
-      address: data.address,
-      neighborhoodId: data.neighborhood_id,
-      logoUrl: data.logo_url,
-      subscriptionStatus: data.subscription_status,
-      subscriptionPlanId: data.subscription_plan_id,
-      stripeCustomerId: data.stripe_customer_id,
-      stripeSubscriptionId: data.stripe_subscription_id,
-      trialEndsAt: data.trial_ends_at,
-      isActive: data.is_active,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-    } as Organization;
+      return {
+        id: data.id,
+        name: data.name,
+        address: data.address,
+        neighborhoodId: data.neighborhood_id,
+        logoUrl: data.logo_url,
+        subscriptionStatus: data.subscription_status,
+        subscriptionPlanId: data.subscription_plan_id,
+        stripeCustomerId: data.stripe_customer_id,
+        stripeSubscriptionId: data.stripe_subscription_id,
+        trialEndsAt: data.trial_ends_at,
+        isActive: data.is_active,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      } as Organization;
+    } catch (err: any) {
+      console.warn('Could not fetch organization:', err.message);
+      return undefined;
+    }
   }
 
-  async createOrganization(org: InsertOrganization): Promise<Organization> {
-    const { data, error } = await supabase
-      .from('organizations')
-      .insert({
-        name: org.name,
-        address: org.address,
-        neighborhood_id: org.neighborhoodId,
-        logo_url: org.logoUrl,
-        subscription_status: org.subscriptionStatus,
-        subscription_plan_id: org.subscriptionPlanId,
-        stripe_customer_id: org.stripeCustomerId,
-        stripe_subscription_id: org.stripeSubscriptionId,
-        trial_ends_at: org.trialEndsAt,
-        is_active: org.isActive,
-      })
-      .select()
-      .single();
-    
-    if (error) throw error;
+  async createOrganization(org: InsertOrganization): Promise<Organization | null> {
+    try {
+      const { data, error } = await supabase
+        .from('organizations')
+        .insert({
+          name: org.name,
+          address: org.address,
+          neighborhood_id: org.neighborhoodId,
+          logo_url: org.logoUrl,
+          subscription_status: org.subscriptionStatus,
+          subscription_plan_id: org.subscriptionPlanId,
+          stripe_customer_id: org.stripeCustomerId,
+          stripe_subscription_id: org.stripeSubscriptionId,
+          trial_ends_at: org.trialEndsAt,
+          is_active: org.isActive,
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        // If table doesn't exist, return null
+        if (error.code === 'PGRST205' || error.message?.includes('organizations')) {
+          console.warn('Organizations table not found, cannot create organization');
+          return null;
+        }
+        throw error;
+      }
 
-    return {
-      id: data.id,
-      name: data.name,
-      address: data.address,
-      neighborhoodId: data.neighborhood_id,
-      logoUrl: data.logo_url,
-      subscriptionStatus: data.subscription_status,
-      subscriptionPlanId: data.subscription_plan_id,
-      stripeCustomerId: data.stripe_customer_id,
-      stripeSubscriptionId: data.stripe_subscription_id,
-      trialEndsAt: data.trial_ends_at,
-      isActive: data.is_active,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-    } as Organization;
+      return {
+        id: data.id,
+        name: data.name,
+        address: data.address,
+        neighborhoodId: data.neighborhood_id,
+        logoUrl: data.logo_url,
+        subscriptionStatus: data.subscription_status,
+        subscriptionPlanId: data.subscription_plan_id,
+        stripeCustomerId: data.stripe_customer_id,
+        stripeSubscriptionId: data.stripe_subscription_id,
+        trialEndsAt: data.trial_ends_at,
+        isActive: data.is_active,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      } as Organization;
+    } catch (err: any) {
+      console.warn('Could not create organization:', err.message);
+      return null;
+    }
   }
 
   async updateOrganization(id: string, updates: Partial<Organization>): Promise<Organization | undefined> {
-    // Convert camelCase to snake_case for Supabase
-    const snakeCaseUpdates: any = {};
-    if (updates.name !== undefined) snakeCaseUpdates.name = updates.name;
-    if (updates.address !== undefined) snakeCaseUpdates.address = updates.address;
-    if (updates.neighborhoodId !== undefined) snakeCaseUpdates.neighborhood_id = updates.neighborhoodId;
-    if (updates.logoUrl !== undefined) snakeCaseUpdates.logo_url = updates.logoUrl;
-    if (updates.subscriptionStatus !== undefined) snakeCaseUpdates.subscription_status = updates.subscriptionStatus;
-    if (updates.isActive !== undefined) snakeCaseUpdates.is_active = updates.isActive;
+    try {
+      // Convert camelCase to snake_case for Supabase
+      const snakeCaseUpdates: any = {};
+      if (updates.name !== undefined) snakeCaseUpdates.name = updates.name;
+      if (updates.address !== undefined) snakeCaseUpdates.address = updates.address;
+      if (updates.neighborhoodId !== undefined) snakeCaseUpdates.neighborhood_id = updates.neighborhoodId;
+      if (updates.logoUrl !== undefined) snakeCaseUpdates.logo_url = updates.logoUrl;
+      if (updates.subscriptionStatus !== undefined) snakeCaseUpdates.subscription_status = updates.subscriptionStatus;
+      if (updates.isActive !== undefined) snakeCaseUpdates.is_active = updates.isActive;
 
-    const { data, error } = await supabase
-      .from('organizations')
-      .update(snakeCaseUpdates)
-      .eq('id', id)
-      .select()
-      .single();
-    
-    if (error) throw error;
+      const { data, error } = await supabase
+        .from('organizations')
+        .update(snakeCaseUpdates)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) {
+        // If table doesn't exist, return undefined
+        if (error.code === 'PGRST205' || error.message?.includes('organizations')) {
+          console.warn('Organizations table not found');
+          return undefined;
+        }
+        throw error;
+      }
 
-    return {
-      id: data.id,
-      name: data.name,
-      address: data.address,
-      neighborhoodId: data.neighborhood_id,
-      logoUrl: data.logo_url,
-      subscriptionStatus: data.subscription_status,
-      subscriptionPlanId: data.subscription_plan_id,
-      stripeCustomerId: data.stripe_customer_id,
-      stripeSubscriptionId: data.stripe_subscription_id,
-      trialEndsAt: data.trial_ends_at,
-      isActive: data.is_active,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-    } as Organization;
+      return {
+        id: data.id,
+        name: data.name,
+        address: data.address,
+        neighborhoodId: data.neighborhood_id,
+        logoUrl: data.logo_url,
+        subscriptionStatus: data.subscription_status,
+        subscriptionPlanId: data.subscription_plan_id,
+        stripeCustomerId: data.stripe_customer_id,
+        stripeSubscriptionId: data.stripe_subscription_id,
+        trialEndsAt: data.trial_ends_at,
+        isActive: data.is_active,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      } as Organization;
+    } catch (err: any) {
+      console.warn('Could not update organization:', err.message);
+      return undefined;
+    }
   }
 
   async deleteOrganization(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('organizations')
-      .delete()
-      .eq('id', id);
-    
-    if (error) throw error;
+    try {
+      const { error } = await supabase
+        .from('organizations')
+        .delete()
+        .eq('id', id);
+      
+      if (error) {
+        // If table doesn't exist, silently skip
+        if (error.code === 'PGRST205' || error.message?.includes('organizations')) {
+          console.warn('Organizations table not found');
+          return;
+        }
+        throw error;
+      }
+    } catch (err: any) {
+      console.warn('Could not delete organization:', err.message);
+    }
   }
 
   async getOrganizationCount(): Promise<number> {
-    const { count, error } = await supabase
-      .from('organizations')
-      .select('*', { count: 'exact', head: true });
-    
-    if (error) throw error;
-    return count || 0;
+    try {
+      const { count, error } = await supabase
+        .from('organizations')
+        .select('*', { count: 'exact', head: true });
+      
+      if (error) {
+        // If table doesn't exist, return 0
+        if (error.code === 'PGRST205' || error.message?.includes('organizations')) {
+          console.warn('Organizations table not found, returning count 0');
+          return 0;
+        }
+        throw error;
+      }
+      return count || 0;
+    } catch (err: any) {
+      console.warn('Could not count organizations:', err.message);
+      return 0;
+    }
   }
 
   // Audit log operations
