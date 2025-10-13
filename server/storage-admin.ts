@@ -222,13 +222,111 @@ export class AdminStorage {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    const { count, error } = await supabase
+    const { count, error} = await supabase
       .from('users')
       .select('*', { count: 'exact', head: true })
       .gte('created_at', thirtyDaysAgo.toISOString());
     
     if (error) throw error;
     return count || 0;
+  }
+
+  // Analytics methods
+  async getPromotionStats(): Promise<{ totalPromotions: number; totalClaims: number; totalRedemptions: number }> {
+    const [promotionsResult, claimsResult, redemptionsResult] = await Promise.all([
+      supabase.from('promotions').select('*', { count: 'exact', head: true }),
+      supabase.from('claims').select('*', { count: 'exact', head: true }),
+      supabase.from('redemptions').select('*', { count: 'exact', head: true }),
+    ]);
+
+    return {
+      totalPromotions: promotionsResult.count || 0,
+      totalClaims: claimsResult.count || 0,
+      totalRedemptions: redemptionsResult.count || 0,
+    };
+  }
+
+  async getDailyActivity(days: number = 30): Promise<any[]> {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    
+    // Fetch promotions, claims, and redemptions created in the last N days
+    const [promotions, claims, redemptions] = await Promise.all([
+      supabase
+        .from('promotions')
+        .select('created_at')
+        .gte('created_at', startDate.toISOString()),
+      supabase
+        .from('claims')
+        .select('claimed_at')
+        .gte('claimed_at', startDate.toISOString()),
+      supabase
+        .from('redemptions')
+        .select('redeemed_at')
+        .gte('redeemed_at', startDate.toISOString()),
+    ]);
+
+    // Group by date
+    const dailyData: Record<string, { date: string; promotions: number; claims: number; redemptions: number }> = {};
+    
+    // Initialize all dates with zeros
+    for (let i = 0; i < days; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      dailyData[dateStr] = { date: dateStr, promotions: 0, claims: 0, redemptions: 0 };
+    }
+
+    // Count promotions by date
+    promotions.data?.forEach((p: any) => {
+      const dateStr = new Date(p.created_at).toISOString().split('T')[0];
+      if (dailyData[dateStr]) dailyData[dateStr].promotions++;
+    });
+
+    // Count claims by date
+    claims.data?.forEach((c: any) => {
+      const dateStr = new Date(c.claimed_at).toISOString().split('T')[0];
+      if (dailyData[dateStr]) dailyData[dateStr].claims++;
+    });
+
+    // Count redemptions by date
+    redemptions.data?.forEach((r: any) => {
+      const dateStr = new Date(r.redeemed_at).toISOString().split('T')[0];
+      if (dailyData[dateStr]) dailyData[dateStr].redemptions++;
+    });
+
+    // Convert to array and sort by date (oldest first for chart)
+    return Object.values(dailyData).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  async getTopRestaurants(limit: number = 5): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('restaurant_profiles')
+      .select(`
+        id,
+        name,
+        user_id,
+        promotions (id, current_claims)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching top restaurants:', error);
+      return [];
+    }
+
+    // Calculate total promotions and total claims for each restaurant
+    const restaurantsWithStats = (data || []).map((restaurant: any) => ({
+      id: restaurant.id,
+      name: restaurant.name,
+      totalPromotions: restaurant.promotions?.length || 0,
+      totalClaims: restaurant.promotions?.reduce((sum: number, p: any) => sum + (p.current_claims || 0), 0) || 0,
+    }));
+
+    // Sort by total claims (most popular restaurants)
+    return restaurantsWithStats
+      .sort((a, b) => b.totalClaims - a.totalClaims)
+      .slice(0, limit);
   }
 
   // Organization operations

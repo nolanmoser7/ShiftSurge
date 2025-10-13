@@ -421,11 +421,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Dashboard metrics
   app.get("/api/admin/dashboard", requireAdmin, async (req: AuthRequest, res) => {
     try {
-      const [totalUsers, totalOrgs, activeUsers, recentLogs] = await Promise.all([
+      const [totalUsers, totalOrgs, activeUsers, recentLogs, promotionStats, dailyActivity, topRestaurants] = await Promise.all([
         adminStorage.getUserCount(),
         adminStorage.getOrganizationCount(),
         adminStorage.getActiveUserCount(),
         adminStorage.getRecentAuditLogs(10),
+        adminStorage.getPromotionStats(),
+        adminStorage.getDailyActivity(30),
+        adminStorage.getTopRestaurants(5),
       ]);
 
       res.json({
@@ -433,6 +436,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         totalOrgs,
         activeUsers,
         recentLogs,
+        promotionStats,
+        dailyActivity,
+        topRestaurants,
       });
     } catch (error) {
       console.error("Dashboard metrics error:", error);
