@@ -8,22 +8,14 @@ import {
   type InsertRestaurantProfile,
   type Organization,
   type InsertOrganization,
-  type Neighborhood,
-  type InsertNeighborhood,
   type Promotion,
   type InsertPromotion,
   type Redemption,
   type InsertRedemption,
-  type Favorite,
-  type InsertFavorite,
-  type InviteToken,
-  type InsertInviteToken,
   type Claim,
   type InsertClaim,
   type AuditLog,
   type InsertAuditLog,
-  type FeatureFlag,
-  type InsertFeatureFlag,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -40,22 +32,16 @@ export interface IStorage {
   getRestaurantProfile(userId: string): Promise<RestaurantProfile | undefined>;
   createRestaurantProfile(profile: InsertRestaurantProfile): Promise<RestaurantProfile>;
 
-  // Organization operations
+  // Organization operations (admin only)
   getOrganization(id: string): Promise<Organization | undefined>;
   createOrganization(org: InsertOrganization): Promise<Organization>;
   updateOrganization(id: string, org: Partial<Organization>): Promise<Organization | undefined>;
   getOrganizations(): Promise<Organization[]>;
 
-  // Neighborhood operations
-  getNeighborhood(id: string): Promise<Neighborhood | undefined>;
-  getNeighborhoodBySlug(slug: string): Promise<Neighborhood | undefined>;
-  createNeighborhood(neighborhood: InsertNeighborhood): Promise<Neighborhood>;
-  getNeighborhoods(): Promise<Neighborhood[]>;
-
   // Promotion operations
   getPromotion(id: string): Promise<Promotion | undefined>;
-  getActivePromotions(neighborhoodId?: string): Promise<any[]>;
-  getOrganizationPromotions(organizationId: string): Promise<any[]>;
+  getActivePromotions(): Promise<any[]>;
+  getRestaurantPromotions(restaurantId: string): Promise<any[]>;
   createPromotion(promotion: InsertPromotion): Promise<Promotion>;
   updatePromotion(id: string, promotion: Partial<Promotion>): Promise<Promotion | undefined>;
 
@@ -64,19 +50,7 @@ export interface IStorage {
   getPromotionRedemptionCount(promotionId: string): Promise<number>;
   getWorkerRedemptions(workerProfileId: string): Promise<Redemption[]>;
 
-  // Favorite operations
-  getFavorites(workerProfileId: string): Promise<Favorite[]>;
-  createFavorite(favorite: InsertFavorite): Promise<Favorite>;
-  deleteFavorite(id: string): Promise<void>;
-  isFavorited(workerProfileId: string, promotionId: string): Promise<boolean>;
-
-  // Invite token operations
-  getInviteToken(token: string): Promise<InviteToken | undefined>;
-  createInviteToken(inviteToken: InsertInviteToken): Promise<InviteToken>;
-  incrementInviteTokenUse(id: string): Promise<void>;
-  getOrganizationInviteTokens(organizationId: string): Promise<InviteToken[]>;
-
-  // Legacy Claim operations (for backward compatibility)
+  // Claim operations
   getClaim(id: string): Promise<Claim | undefined>;
   getClaimByCode(code: string): Promise<Claim | undefined>;
   getWorkerClaims(workerId: string): Promise<Claim[]>;
@@ -91,8 +65,6 @@ export interface IStorage {
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
   getAuditLogs(limit?: number, offset?: number): Promise<{ logs: AuditLog[]; total: number }>;
   getDashboardMetrics(): Promise<any>;
-  updateFeatureFlag(key: string, enabled: boolean, payload?: string): Promise<FeatureFlag>;
-  getFeatureFlags(): Promise<FeatureFlag[]>;
 }
 
 export class SupabaseStorage implements IStorage {
@@ -156,10 +128,9 @@ export class SupabaseStorage implements IStorage {
       .from('worker_profiles')
       .insert({
         user_id: profile.userId,
-        organization_id: profile.organizationId || null,
         name: profile.name,
         worker_role: profile.workerRole,
-        is_verified: profile.isVerified
+        is_verified: profile.isVerified || false
       })
       .select()
       .single();
@@ -188,8 +159,9 @@ export class SupabaseStorage implements IStorage {
       .from('restaurant_profiles')
       .insert({
         user_id: profile.userId,
-        organization_id: profile.organizationId,
-        name: profile.name
+        name: profile.name,
+        address: profile.address || null,
+        logo_url: profile.logoUrl || null
       })
       .select()
       .single();
@@ -221,12 +193,12 @@ export class SupabaseStorage implements IStorage {
         address: org.address || null,
         neighborhood_id: org.neighborhoodId || null,
         logo_url: org.logoUrl || null,
-        subscription_status: org.subscriptionStatus || 'trial',
+        subscription_status: org.subscriptionStatus || 'active',
         subscription_plan_id: org.subscriptionPlanId || null,
         stripe_customer_id: org.stripeCustomerId || null,
         stripe_subscription_id: org.stripeSubscriptionId || null,
         trial_ends_at: org.trialEndsAt || null,
-        is_active: org.isActive !== undefined ? org.isActive : true
+        is_active: org.isActive !== undefined ? org.isActive : true,
       })
       .select()
       .single();
@@ -236,22 +208,17 @@ export class SupabaseStorage implements IStorage {
   }
 
   async updateOrganization(id: string, org: Partial<Organization>): Promise<Organization | undefined> {
-    const updateData: any = { updated_at: new Date().toISOString() };
-    
-    if (org.name !== undefined) updateData.name = org.name;
-    if (org.address !== undefined) updateData.address = org.address;
-    if (org.neighborhoodId !== undefined) updateData.neighborhood_id = org.neighborhoodId;
-    if (org.logoUrl !== undefined) updateData.logo_url = org.logoUrl;
-    if (org.subscriptionStatus !== undefined) updateData.subscription_status = org.subscriptionStatus;
-    if (org.subscriptionPlanId !== undefined) updateData.subscription_plan_id = org.subscriptionPlanId;
-    if (org.stripeCustomerId !== undefined) updateData.stripe_customer_id = org.stripeCustomerId;
-    if (org.stripeSubscriptionId !== undefined) updateData.stripe_subscription_id = org.stripeSubscriptionId;
-    if (org.trialEndsAt !== undefined) updateData.trial_ends_at = org.trialEndsAt;
-    if (org.isActive !== undefined) updateData.is_active = org.isActive;
-
     const { data, error } = await supabase
       .from('organizations')
-      .update(updateData)
+      .update({
+        ...(org.name !== undefined && { name: org.name }),
+        ...(org.address !== undefined && { address: org.address }),
+        ...(org.neighborhoodId !== undefined && { neighborhood_id: org.neighborhoodId }),
+        ...(org.logoUrl !== undefined && { logo_url: org.logoUrl }),
+        ...(org.subscriptionStatus !== undefined && { subscription_status: org.subscriptionStatus }),
+        ...(org.isActive !== undefined && { is_active: org.isActive }),
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', id)
       .select()
       .single();
@@ -270,61 +237,7 @@ export class SupabaseStorage implements IStorage {
       .order('created_at', { ascending: false });
     
     if (error) throw error;
-    return (data || []) as Organization[];
-  }
-
-  // Neighborhood operations
-  async getNeighborhood(id: string): Promise<Neighborhood | undefined> {
-    const { data, error } = await supabase
-      .from('neighborhoods')
-      .select('*')
-      .eq('id', id)
-      .single();
-    
-    if (error) {
-      if (error.code === 'PGRST116') return undefined;
-      throw error;
-    }
-    return data as Neighborhood;
-  }
-
-  async getNeighborhoodBySlug(slug: string): Promise<Neighborhood | undefined> {
-    const { data, error } = await supabase
-      .from('neighborhoods')
-      .select('*')
-      .eq('slug', slug)
-      .single();
-    
-    if (error) {
-      if (error.code === 'PGRST116') return undefined;
-      throw error;
-    }
-    return data as Neighborhood;
-  }
-
-  async createNeighborhood(neighborhood: InsertNeighborhood): Promise<Neighborhood> {
-    const { data, error } = await supabase
-      .from('neighborhoods')
-      .insert({
-        name: neighborhood.name,
-        slug: neighborhood.slug,
-        description: neighborhood.description || null
-      })
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data as Neighborhood;
-  }
-
-  async getNeighborhoods(): Promise<Neighborhood[]> {
-    const { data, error } = await supabase
-      .from('neighborhoods')
-      .select('*')
-      .order('name', { ascending: true });
-    
-    if (error) throw error;
-    return (data || []) as Neighborhood[];
+    return data as Organization[];
   }
 
   // Promotion operations
@@ -342,79 +255,45 @@ export class SupabaseStorage implements IStorage {
     return data as Promotion;
   }
 
-  async getActivePromotions(neighborhoodId?: string): Promise<any[]> {
-    let query = supabase
+  async getActivePromotions(): Promise<any[]> {
+    const { data, error } = await supabase
       .from('promotions')
       .select(`
         *,
-        organizations!inner (
-          name,
-          address,
-          logo_url
-        ),
-        neighborhoods (
-          name,
-          slug
-        )
+        restaurant_profiles!inner(name, address, logo_url)
       `)
       .eq('status', 'active')
-      .eq('is_active', true);
-    
-    if (neighborhoodId) {
-      query = query.eq('neighborhood_id', neighborhoodId);
-    }
-    
-    query = query.order('created_at', { ascending: false });
-    
-    const { data, error } = await query;
-    
-    if (error) throw error;
-    
-    return (data || []).map(promo => ({
-      ...promo,
-      organizationName: promo.organizations?.name,
-      organizationAddress: promo.organizations?.address,
-      organizationLogoUrl: promo.organizations?.logo_url,
-      neighborhoodName: promo.neighborhoods?.name,
-      neighborhoodSlug: promo.neighborhoods?.slug
-    }));
-  }
-
-  async getOrganizationPromotions(organizationId: string): Promise<any[]> {
-    const { data, error } = await supabase
-      .from('promotions')
-      .select('*')
-      .eq('organization_id', organizationId)
       .order('created_at', { ascending: false });
     
     if (error) throw error;
+    return data || [];
+  }
+
+  async getRestaurantPromotions(restaurantId: string): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('promotions')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .order('created_at', { ascending: false });
     
-    const promos = data || [];
-    const result = await Promise.all(
-      promos.map(async (promo) => ({
-        ...promo,
-        redemptions: await this.getPromotionRedemptionCount(promo.id),
-      }))
-    );
-    
-    return result;
+    if (error) throw error;
+    return data || [];
   }
 
   async createPromotion(promotion: InsertPromotion): Promise<Promotion> {
     const { data, error } = await supabase
       .from('promotions')
       .insert({
-        organization_id: promotion.organizationId,
-        neighborhood_id: promotion.neighborhoodId || null,
+        restaurant_id: promotion.restaurantId,
         title: promotion.title,
         description: promotion.description,
         image_url: promotion.imageUrl || null,
         discount_type: promotion.discountType,
         discount_value: promotion.discountValue,
+        status: promotion.status || 'draft',
         start_date: promotion.startDate || null,
         end_date: promotion.endDate || null,
-        is_active: promotion.isActive !== undefined ? promotion.isActive : true,
-        status: promotion.status || 'draft'
+        max_claims: promotion.maxClaims || null,
       })
       .select()
       .single();
@@ -424,18 +303,19 @@ export class SupabaseStorage implements IStorage {
   }
 
   async updatePromotion(id: string, promotion: Partial<Promotion>): Promise<Promotion | undefined> {
-    const updateData: any = { updated_at: new Date().toISOString() };
+    const updateData: any = {};
     
     if (promotion.title !== undefined) updateData.title = promotion.title;
     if (promotion.description !== undefined) updateData.description = promotion.description;
     if (promotion.imageUrl !== undefined) updateData.image_url = promotion.imageUrl;
     if (promotion.discountType !== undefined) updateData.discount_type = promotion.discountType;
     if (promotion.discountValue !== undefined) updateData.discount_value = promotion.discountValue;
+    if (promotion.status !== undefined) updateData.status = promotion.status;
     if (promotion.startDate !== undefined) updateData.start_date = promotion.startDate;
     if (promotion.endDate !== undefined) updateData.end_date = promotion.endDate;
-    if (promotion.status !== undefined) updateData.status = promotion.status;
-    if (promotion.isActive !== undefined) updateData.is_active = promotion.isActive;
-    if (promotion.neighborhoodId !== undefined) updateData.neighborhood_id = promotion.neighborhoodId;
+    if (promotion.maxClaims !== undefined) updateData.max_claims = promotion.maxClaims;
+    
+    updateData.updated_at = new Date().toISOString();
 
     const { data, error } = await supabase
       .from('promotions')
@@ -456,10 +336,7 @@ export class SupabaseStorage implements IStorage {
     const { data, error } = await supabase
       .from('redemptions')
       .insert({
-        promotion_id: redemption.promotionId,
-        worker_profile_id: redemption.workerProfileId,
-        validated_by_organization_id: redemption.validatedByOrganizationId,
-        validated_by_user_id: redemption.validatedByUserId || null
+        claim_id: redemption.claimId,
       })
       .select()
       .single();
@@ -470,135 +347,33 @@ export class SupabaseStorage implements IStorage {
 
   async getPromotionRedemptionCount(promotionId: string): Promise<number> {
     const { data, error } = await supabase
-      .from('redemptions')
+      .from('claims')
       .select('id')
-      .eq('promotion_id', promotionId);
+      .eq('promotion_id', promotionId)
+      .eq('is_redeemed', true);
     
     if (error) throw error;
-    return (data || []).length;
+    return data?.length || 0;
   }
 
   async getWorkerRedemptions(workerProfileId: string): Promise<Redemption[]> {
     const { data, error } = await supabase
       .from('redemptions')
-      .select('*')
-      .eq('worker_profile_id', workerProfileId)
-      .order('redeemed_at', { ascending: false });
+      .select(`
+        *,
+        claims!inner(
+          worker_id,
+          promotion_id,
+          code
+        )
+      `)
+      .eq('claims.worker_id', workerProfileId);
     
     if (error) throw error;
-    return (data || []) as Redemption[];
+    return data || [];
   }
 
-  // Favorite operations
-  async getFavorites(workerProfileId: string): Promise<Favorite[]> {
-    const { data, error } = await supabase
-      .from('favorites')
-      .select('*')
-      .eq('worker_profile_id', workerProfileId)
-      .order('created_at', { ascending: false });
-    
-    if (error) throw error;
-    return (data || []) as Favorite[];
-  }
-
-  async createFavorite(favorite: InsertFavorite): Promise<Favorite> {
-    const { data, error } = await supabase
-      .from('favorites')
-      .insert({
-        worker_profile_id: favorite.workerProfileId,
-        promotion_id: favorite.promotionId
-      })
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data as Favorite;
-  }
-
-  async deleteFavorite(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('favorites')
-      .delete()
-      .eq('id', id);
-    
-    if (error) throw error;
-  }
-
-  async isFavorited(workerProfileId: string, promotionId: string): Promise<boolean> {
-    const { data, error } = await supabase
-      .from('favorites')
-      .select('id')
-      .eq('worker_profile_id', workerProfileId)
-      .eq('promotion_id', promotionId)
-      .single();
-    
-    if (error) {
-      if (error.code === 'PGRST116') return false;
-      throw error;
-    }
-    return !!data;
-  }
-
-  // Invite token operations
-  async getInviteToken(token: string): Promise<InviteToken | undefined> {
-    const { data, error } = await supabase
-      .from('invite_tokens')
-      .select('*')
-      .eq('token', token)
-      .single();
-    
-    if (error) {
-      if (error.code === 'PGRST116') return undefined;
-      throw error;
-    }
-    return data as InviteToken;
-  }
-
-  async createInviteToken(inviteToken: InsertInviteToken): Promise<InviteToken> {
-    const { data, error } = await supabase
-      .from('invite_tokens')
-      .insert({
-        organization_id: inviteToken.organizationId,
-        token: inviteToken.token,
-        created_by_user_id: inviteToken.createdByUserId,
-        max_uses: inviteToken.maxUses || null,
-        expires_at: inviteToken.expiresAt || null,
-        is_active: inviteToken.isActive !== undefined ? inviteToken.isActive : true
-      })
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data as InviteToken;
-  }
-
-  async incrementInviteTokenUse(id: string): Promise<void> {
-    const token = await supabase
-      .from('invite_tokens')
-      .select('current_uses')
-      .eq('id', id)
-      .single();
-    
-    if (token.data) {
-      await supabase
-        .from('invite_tokens')
-        .update({ current_uses: (token.data.current_uses || 0) + 1 })
-        .eq('id', id);
-    }
-  }
-
-  async getOrganizationInviteTokens(organizationId: string): Promise<InviteToken[]> {
-    const { data, error } = await supabase
-      .from('invite_tokens')
-      .select('*')
-      .eq('organization_id', organizationId)
-      .order('created_at', { ascending: false });
-    
-    if (error) throw error;
-    return (data || []) as InviteToken[];
-  }
-
-  // Legacy Claim operations (for backward compatibility)
+  // Claim operations
   async getClaim(id: string): Promise<Claim | undefined> {
     const { data, error } = await supabase
       .from('claims')
@@ -631,22 +406,20 @@ export class SupabaseStorage implements IStorage {
     const { data, error } = await supabase
       .from('claims')
       .select('*')
-      .eq('worker_id', workerId)
-      .order('claimed_at', { ascending: false });
+      .eq('worker_id', workerId);
     
     if (error) throw error;
-    return (data || []) as Claim[];
+    return data || [];
   }
 
   async createClaim(claim: InsertClaim): Promise<Claim> {
     const { data, error } = await supabase
       .from('claims')
       .insert({
-        worker_id: claim.workerId,
         promotion_id: claim.promotionId,
+        worker_id: claim.workerId,
         code: claim.code,
         expires_at: claim.expiresAt,
-        is_redeemed: claim.isRedeemed || false
       })
       .select()
       .single();
@@ -658,9 +431,7 @@ export class SupabaseStorage implements IStorage {
   async updateClaim(id: string, claim: Partial<Claim>): Promise<Claim | undefined> {
     const updateData: any = {};
     if (claim.isRedeemed !== undefined) updateData.is_redeemed = claim.isRedeemed;
-    if (claim.code !== undefined) updateData.code = claim.code;
-    if (claim.expiresAt !== undefined) updateData.expires_at = claim.expiresAt;
-
+    
     const { data, error } = await supabase
       .from('claims')
       .update(updateData)
@@ -676,7 +447,7 @@ export class SupabaseStorage implements IStorage {
   }
 
   // Admin operations
-  async getAllUsers(limit: number = 50, offset: number = 0): Promise<{ users: User[]; total: number }> {
+  async getAllUsers(limit = 50, offset = 0): Promise<{ users: User[]; total: number }> {
     const { data, error, count } = await supabase
       .from('users')
       .select('*', { count: 'exact' })
@@ -684,7 +455,7 @@ export class SupabaseStorage implements IStorage {
       .range(offset, offset + limit - 1);
     
     if (error) throw error;
-    return { users: (data || []) as User[], total: count || 0 };
+    return { users: data || [], total: count || 0 };
   }
 
   async searchUsers(query: string): Promise<User[]> {
@@ -692,17 +463,17 @@ export class SupabaseStorage implements IStorage {
       .from('users')
       .select('*')
       .ilike('email', `%${query}%`)
-      .order('created_at', { ascending: false })
-      .limit(20);
+      .order('created_at', { ascending: false });
     
     if (error) throw error;
-    return (data || []) as User[];
+    return data || [];
   }
 
   async updateUser(id: string, user: Partial<User>): Promise<User | undefined> {
     const updateData: any = {};
     if (user.email !== undefined) updateData.email = user.email;
     if (user.role !== undefined) updateData.role = user.role;
+    if (user.password !== undefined) updateData.password = user.password;
 
     const { data, error } = await supabase
       .from('users')
@@ -720,7 +491,7 @@ export class SupabaseStorage implements IStorage {
 
   async getUserWithProfile(id: string): Promise<any> {
     const user = await this.getUser(id);
-    if (!user) return undefined;
+    if (!user) return null;
 
     let profile = null;
     if (user.role === 'worker') {
@@ -729,7 +500,7 @@ export class SupabaseStorage implements IStorage {
       profile = await this.getRestaurantProfile(id);
     }
 
-    return { user, profile };
+    return { ...user, profile };
   }
 
   async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
@@ -739,7 +510,7 @@ export class SupabaseStorage implements IStorage {
         actor_id: log.actorId || null,
         action: log.action,
         subject: log.subject,
-        details: log.details || null
+        details: log.details || null,
       })
       .select()
       .single();
@@ -748,7 +519,7 @@ export class SupabaseStorage implements IStorage {
     return data as AuditLog;
   }
 
-  async getAuditLogs(limit: number = 50, offset: number = 0): Promise<{ logs: AuditLog[]; total: number }> {
+  async getAuditLogs(limit = 100, offset = 0): Promise<{ logs: AuditLog[]; total: number }> {
     const { data, error, count } = await supabase
       .from('audit_logs')
       .select('*', { count: 'exact' })
@@ -756,92 +527,21 @@ export class SupabaseStorage implements IStorage {
       .range(offset, offset + limit - 1);
     
     if (error) throw error;
-    return { logs: (data || []) as AuditLog[], total: count || 0 };
+    return { logs: data || [], total: count || 0 };
   }
 
   async getDashboardMetrics(): Promise<any> {
-    // Get total users
-    const { count: totalUsers } = await supabase
-      .from('users')
-      .select('*', { count: 'exact', head: true });
-
-    // Get total organizations
-    const { count: totalOrgs } = await supabase
-      .from('organizations')
-      .select('*', { count: 'exact', head: true });
-
-    // Get active users (last 30 days) - users who have created promotions, redemptions, or claims
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const { data: recentRedemptions } = await supabase
-      .from('redemptions')
-      .select('validated_by_user_id')
-      .gte('redeemed_at', thirtyDaysAgo.toISOString());
-
-    const activeUserIds = new Set((recentRedemptions || []).map(r => r.validated_by_user_id).filter(Boolean));
-    const activeUsers = activeUserIds.size;
-
-    // Get recent audit logs
-    const { data: recentLogs } = await supabase
-      .from('audit_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(10);
+    const [usersResult, promotionsResult, claimsResult] = await Promise.all([
+      supabase.from('users').select('role', { count: 'exact', head: true }),
+      supabase.from('promotions').select('status', { count: 'exact', head: true }),
+      supabase.from('claims').select('id', { count: 'exact', head: true }),
+    ]);
 
     return {
-      totalUsers: totalUsers || 0,
-      totalOrgs: totalOrgs || 0,
-      activeUsers,
-      recentLogs: recentLogs || []
+      totalUsers: usersResult.count || 0,
+      totalPromotions: promotionsResult.count || 0,
+      totalClaims: claimsResult.count || 0,
     };
-  }
-
-  async updateFeatureFlag(key: string, enabled: boolean, payload?: string): Promise<FeatureFlag> {
-    const { data: existing } = await supabase
-      .from('feature_flags')
-      .select('*')
-      .eq('key', key)
-      .single();
-
-    if (existing) {
-      const { data, error } = await supabase
-        .from('feature_flags')
-        .update({
-          enabled,
-          payload: payload || null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('key', key)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data as FeatureFlag;
-    } else {
-      const { data, error } = await supabase
-        .from('feature_flags')
-        .insert({
-          key,
-          enabled,
-          payload: payload || null
-        })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data as FeatureFlag;
-    }
-  }
-
-  async getFeatureFlags(): Promise<FeatureFlag[]> {
-    const { data, error } = await supabase
-      .from('feature_flags')
-      .select('*')
-      .order('key', { ascending: true });
-    
-    if (error) throw error;
-    return (data || []) as FeatureFlag[];
   }
 }
 
