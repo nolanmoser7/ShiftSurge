@@ -60,18 +60,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           })
         );
       } else {
-        // Create organization first
-        const organization = await storage.createOrganization({
+        // Create restaurant profile
+        await storage.createRestaurantProfile({
+          userId: user.id,
           name: data.name,
           address: data.address,
           logoUrl: data.logoUrl,
-        });
-
-        // Then create restaurant profile linked to organization
-        await storage.createRestaurantProfile({
-          userId: user.id,
-          organizationId: organization.id,
-          name: data.name,
         });
 
         // Log business action for admin audit
@@ -82,7 +76,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           JSON.stringify({ 
             email: user.email,
             name: data.name,
-            organizationId: organization.id,
             address: data.address
           })
         );
@@ -184,7 +177,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Convert date strings to Date objects
       const promotionData = {
         ...req.body,
-        organizationId: restaurantProfile.organizationId,
+        restaurantId: restaurantProfile.id,
         startDate: req.body.startDate ? new Date(req.body.startDate) : new Date(),
         endDate: req.body.endDate ? new Date(req.body.endDate) : undefined,
       };
@@ -198,7 +191,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `promotion:${promotion.id}`,
         JSON.stringify({ 
           restaurantId: req.userId,
-          organizationId: restaurantProfile.organizationId,
+          restaurantProfileId: restaurantProfile.id,
           title: promotion.title,
           discountType: promotion.discountType,
           discountValue: promotion.discountValue
@@ -231,7 +224,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Restaurant profile not found" });
       }
 
-      const promotions = await storage.getOrganizationPromotions(restaurantProfile.organizationId);
+      const promotions = await storage.getRestaurantPromotions(restaurantProfile.id);
       res.json(promotions);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch promotions" });
@@ -264,7 +257,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         workerId: workerProfile.id,
         code,
         expiresAt,
-        isRedeemed: false,
       });
 
       res.json(claim);
@@ -312,10 +304,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const redemption = await storage.createRedemption({
-        promotionId: claim.promotionId,
-        workerProfileId: claim.workerId,
-        validatedByOrganizationId: restaurantProfile.organizationId,
-        validatedByUserId: req.userId,
+        claimId: claim.id,
       });
 
       // Mark the claim as redeemed
@@ -334,7 +323,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           workerId: claim.workerId,
           workerName: workerProfile?.name,
           restaurantId: req.userId,
-          organizationId: restaurantProfile.organizationId
+          restaurantProfileId: restaurantProfile.id
         })
       );
 
@@ -515,6 +504,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { name } = req.body;
       const organization = await adminStorage.createOrganization({ name });
+
+      if (!organization) {
+        return res.status(500).json({ error: "Failed to create organization" });
+      }
 
       // Log admin action
       await adminStorage.createAuditLogSimple(
