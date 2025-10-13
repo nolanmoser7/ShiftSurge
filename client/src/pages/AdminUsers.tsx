@@ -7,6 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -21,9 +30,10 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Eye } from "lucide-react";
+import { Search, Eye, ShieldCheck } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 export default function AdminUsers() {
@@ -32,6 +42,8 @@ export default function AdminUsers() {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [roleFilter, setRoleFilter] = useState("all");
+  const [editRole, setEditRole] = useState<string>("");
+  const [editIsActive, setEditIsActive] = useState<boolean>(true);
 
   const { data: usersData, isLoading } = useQuery({
     queryKey: searchQuery 
@@ -47,14 +59,56 @@ export default function AdminUsers() {
   const updateUserMutation = useMutation({
     mutationFn: async ({ userId, updates }: { userId: string; updates: any }) => {
       const res = await apiRequest("PATCH", `/api/admin/users/${userId}`, updates);
-      return res.json();
+      const data = await res.json();
+      
+      if (!res.ok) {
+        const error: any = new Error(data.error || "Failed to update user");
+        error.status = res.status;
+        error.data = data;
+        throw error;
+      }
+      
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/users/${selectedUser?.id}`] });
+      setIsDetailsOpen(false);
+      setSelectedUser(null);
       toast({
         title: "User updated",
         description: "User has been updated successfully",
       });
+    },
+    onError: (error: any) => {
+      if (error?.status === 409 && error?.data?.partialSuccess && error?.data?.user) {
+        // Partial success - update local state with actual database values
+        const actualUser = error.data.user;
+        
+        // Update all state to reflect actual database values
+        setSelectedUser((prev: any) => ({
+          ...prev,
+          role: actualUser.role,
+          isActive: actualUser.isActive ?? true,
+        }));
+        setEditRole(actualUser.role);
+        setEditIsActive(actualUser.isActive ?? true);
+        
+        // Invalidate queries to refresh lists
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+        queryClient.invalidateQueries({ queryKey: [`/api/admin/users/${selectedUser?.id}`] });
+        
+        toast({
+          title: "Partial update",
+          description: error.data.error || "Some changes were saved, but others could not be applied. Please try again later.",
+        });
+      } else {
+        toast({
+          title: "Update failed",
+          description: error?.message || "Failed to update user",
+          variant: "destructive",
+        });
+      }
     },
   });
 
@@ -67,7 +121,31 @@ export default function AdminUsers() {
 
   const handleViewUser = (user: any) => {
     setSelectedUser(user);
+    setEditRole(user.role);
+    setEditIsActive(user.isActive ?? true);
     setIsDetailsOpen(true);
+  };
+
+  const handleSaveUser = async () => {
+    if (!selectedUser) return;
+    
+    const updates: any = {};
+    if (editRole !== selectedUser.role) {
+      updates.role = editRole;
+    }
+    if (editIsActive !== (selectedUser.isActive ?? true)) {
+      updates.isActive = editIsActive;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      toast({
+        title: "No changes",
+        description: "No changes were made to the user",
+      });
+      return;
+    }
+
+    updateUserMutation.mutate({ userId: selectedUser.id, updates });
   };
 
   const getRoleBadgeVariant = (role: string) => {
@@ -142,9 +220,14 @@ export default function AdminUsers() {
                         <div className="space-y-3">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
-                              <p className="font-medium text-sm truncate" data-testid={`text-user-email-${user.id}`}>
-                                {user.email}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium text-sm truncate" data-testid={`text-user-email-${user.id}`}>
+                                  {user.email}
+                                </p>
+                                {user.isActive === false && (
+                                  <Badge variant="outline" className="text-xs">Inactive</Badge>
+                                )}
+                              </div>
                               <p className="text-sm text-muted-foreground truncate" data-testid={`text-user-name-${user.id}`}>
                                 {user.workerName || user.restaurantName || "-"}
                               </p>
@@ -193,7 +276,12 @@ export default function AdminUsers() {
                       {users.map((user: any) => (
                         <TableRow key={user.id} data-testid={`row-user-${user.id}`}>
                           <TableCell className="font-medium" data-testid={`text-user-email-${user.id}`}>
-                            {user.email}
+                            <div className="flex items-center gap-2">
+                              {user.email}
+                              {user.isActive === false && (
+                                <Badge variant="outline" className="text-xs">Inactive</Badge>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell data-testid={`text-user-name-${user.id}`}>
                             {user.workerName || user.restaurantName || "-"}
@@ -239,8 +327,8 @@ export default function AdminUsers() {
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
         <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md" data-testid="dialog-user-details">
           <DialogHeader className="space-y-2">
-            <DialogTitle className="text-lg sm:text-xl">User Details</DialogTitle>
-            <DialogDescription className="text-sm">View user information and profile</DialogDescription>
+            <DialogTitle className="text-lg sm:text-xl">Manage User</DialogTitle>
+            <DialogDescription className="text-sm">View and update user settings</DialogDescription>
           </DialogHeader>
           {isLoadingDetails ? (
             <div className="py-8 text-center">
@@ -249,22 +337,48 @@ export default function AdminUsers() {
           ) : userDetails ? (
             <div className="space-y-4 pt-2">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Email</label>
+                <Label className="text-sm font-medium">Email</Label>
                 <p className="text-sm text-muted-foreground break-all" data-testid="text-detail-email">
                   {(userDetails as any).user.email}
                 </p>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Role</label>
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant={getRoleBadgeVariant((userDetails as any).user.role)}>
-                    {(userDetails as any).user.role}
-                  </Badge>
-                </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Role</Label>
+                <Select value={editRole} onValueChange={setEditRole}>
+                  <SelectTrigger data-testid="select-edit-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="worker">Worker</SelectItem>
+                    <SelectItem value="restaurant">Restaurant</SelectItem>
+                    <SelectItem value="super_admin">
+                      <div className="flex items-center gap-1.5">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        Super Admin
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-sm font-medium">Active Status</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {editIsActive ? "User can log in" : "User is deactivated"}
+                  </p>
+                </div>
+                <Switch
+                  checked={editIsActive}
+                  onCheckedChange={setEditIsActive}
+                  data-testid="switch-is-active"
+                />
+              </div>
+
               {(userDetails as any).profile && (
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Profile</label>
+                <div className="space-y-1.5 pt-2 border-t">
+                  <Label className="text-sm font-medium">Profile Information</Label>
                   <div className="mt-2 space-y-2.5">
                     {(userDetails as any).profile.name && (
                       <div className="flex flex-col sm:flex-row sm:items-center gap-1">
@@ -287,6 +401,24 @@ export default function AdminUsers() {
               )}
             </div>
           ) : null}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setIsDetailsOpen(false)}
+              className="w-full sm:w-auto"
+              data-testid="button-cancel-edit-user"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveUser}
+              disabled={updateUserMutation.isPending || isLoadingDetails}
+              className="w-full sm:w-auto"
+              data-testid="button-save-user"
+            >
+              {updateUserMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </AdminLayout>

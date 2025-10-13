@@ -482,10 +482,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         JSON.stringify({ updates })
       );
 
-      res.json(user);
-    } catch (error) {
+      // Remove password from response for security
+      const { password: _, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error: any) {
       console.error("Update user error:", error);
-      res.status(500).json({ error: "Failed to update user" });
+      
+      // Handle partial success (e.g., role updated but activation failed)
+      if (error.code === 'ACTIVATION_UPDATE_FAILED' && error.user) {
+        const { password: _, ...userWithoutPassword } = error.user;
+        return res.status(409).json({ 
+          error: error.message,
+          user: userWithoutPassword,
+          partialSuccess: true
+        });
+      }
+      
+      res.status(500).json({ error: error.message || "Failed to update user" });
     }
   });
 

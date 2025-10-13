@@ -14,10 +14,7 @@ export class AdminStorage {
       let query = supabase
         .from('users')
         .select(`
-          id,
-          email,
-          role,
-          created_at,
+          *,
           worker_profiles!left(worker_role, name),
           restaurant_profiles!left(name)
         `)
@@ -34,7 +31,7 @@ export class AdminStorage {
         console.warn('Users query with profiles failed, trying fallback:', error.message);
         const fallbackQuery = await supabase
           .from('users')
-          .select('id, email, role, created_at')
+          .select('*')
           .order('created_at', { ascending: false });
         
         if (fallbackQuery.error) throw fallbackQuery.error;
@@ -43,6 +40,7 @@ export class AdminStorage {
           id: user.id,
           email: user.email,
           role: user.role,
+          isActive: user.is_active ?? true,
           createdAt: user.created_at,
           workerRole: null,
           workerName: null,
@@ -56,6 +54,7 @@ export class AdminStorage {
         id: user.id,
         email: user.email,
         role: user.role,
+        isActive: user.is_active ?? true,
         createdAt: user.created_at,
         workerRole: user.worker_profiles?.[0]?.worker_role || null,
         workerName: user.worker_profiles?.[0]?.name || null,
@@ -90,6 +89,7 @@ export class AdminStorage {
         email: data.email,
         password: data.password,
         role: data.role,
+        isActive: data.is_active ?? true,
         createdAt: data.created_at,
       },
       profile: data.worker_profiles?.[0] || data.restaurant_profiles?.[0] || null,
@@ -113,25 +113,69 @@ export class AdminStorage {
       email: data.email,
       password: data.password,
       role: data.role,
+      isActive: data.is_active ?? true,
       createdAt: data.created_at,
     } as User;
   }
 
   async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    // Update only fields that PostgREST recognizes
+    const updateObj: any = {};
+    if (updates.email !== undefined) updateObj.email = updates.email;
+    if (updates.password !== undefined) updateObj.password = updates.password;
+    if (updates.role !== undefined) updateObj.role = updates.role;
+    if (updates.isActive !== undefined) updateObj.is_active = updates.isActive;
+
     const { data, error } = await supabase
       .from('users')
-      .update(updates)
+      .update(updateObj)
       .eq('id', id)
-      .select()
+      .select('*')
       .single();
     
-    if (error) throw error;
+    if (error) {
+      // If error is about is_active column, retry without it and throw specific error
+      if (error.message?.includes('is_active')) {
+        console.warn('is_active column not in PostgREST schema cache');
+        delete updateObj.is_active;
+        
+        const { data: retryData, error: retryError } = await supabase
+          .from('users')
+          .update(updateObj)
+          .eq('id', id)
+          .select('*')
+          .single();
+        
+        if (retryError) throw retryError;
+        
+        // Throw specific error for is_active update failure
+        const updatedUser = {
+          id: retryData.id,
+          email: retryData.email,
+          password: retryData.password,
+          role: retryData.role,
+          isActive: retryData.is_active ?? true,
+          createdAt: retryData.created_at,
+        } as User;
+        
+        if (updates.isActive !== undefined) {
+          const err: any = new Error('Activation status could not be updated. Please try again in a few minutes.');
+          err.code = 'ACTIVATION_UPDATE_FAILED';
+          err.user = updatedUser;
+          throw err;
+        }
+        
+        return updatedUser;
+      }
+      throw error;
+    }
 
     return {
       id: data.id,
       email: data.email,
       password: data.password,
       role: data.role,
+      isActive: data.is_active ?? true,
       createdAt: data.created_at,
     } as User;
   }
