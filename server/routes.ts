@@ -502,6 +502,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/admin/users/:id/reset-password", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const { newPassword } = req.body;
+      
+      if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+
+      const success = await adminStorage.resetUserPassword(req.params.id, newPassword);
+      
+      if (!success) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Log admin action
+      await adminStorage.createAuditLogSimple(
+        req.userId!,
+        "RESET_PASSWORD",
+        `user:${req.params.id}`,
+        "Admin reset user password"
+      );
+
+      res.json({ message: "Password reset successfully" });
+    } catch (error: any) {
+      console.error("Reset password error:", error);
+      res.status(500).json({ error: error.message || "Failed to reset password" });
+    }
+  });
+
   // Organization management
   app.get("/api/admin/organizations", requireAdmin, async (req: AuthRequest, res) => {
     try {

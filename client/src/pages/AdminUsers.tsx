@@ -33,7 +33,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Eye, ShieldCheck } from "lucide-react";
+import { Search, Eye, ShieldCheck, Key } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 export default function AdminUsers() {
@@ -44,6 +44,8 @@ export default function AdminUsers() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [editRole, setEditRole] = useState<string>("");
   const [editIsActive, setEditIsActive] = useState<boolean>(true);
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
 
   const { data: usersData, isLoading } = useQuery({
     queryKey: searchQuery 
@@ -54,6 +56,34 @@ export default function AdminUsers() {
   const { data: userDetails, isLoading: isLoadingDetails } = useQuery({
     queryKey: [`/api/admin/users/${selectedUser?.id}`],
     enabled: !!selectedUser?.id && isDetailsOpen,
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ userId, newPassword }: { userId: string; newPassword: string }) => {
+      const res = await apiRequest("POST", `/api/admin/users/${userId}/reset-password`, { newPassword });
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to reset password");
+      }
+      
+      return data;
+    },
+    onSuccess: () => {
+      setShowPasswordReset(false);
+      setNewPassword("");
+      toast({
+        title: "Password reset",
+        description: "User password has been reset successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Reset failed",
+        description: error.message || "Failed to reset password",
+        variant: "destructive",
+      });
+    },
   });
 
   const updateUserMutation = useMutation({
@@ -123,6 +153,8 @@ export default function AdminUsers() {
     setSelectedUser(user);
     setEditRole(user.role);
     setEditIsActive(user.isActive ?? true);
+    setShowPasswordReset(false);
+    setNewPassword("");
     setIsDetailsOpen(true);
   };
 
@@ -146,6 +178,28 @@ export default function AdminUsers() {
     }
 
     updateUserMutation.mutate({ userId: selectedUser.id, updates });
+  };
+
+  const handleResetPassword = () => {
+    if (!selectedUser || !newPassword.trim()) {
+      toast({
+        title: "Invalid password",
+        description: "Please enter a new password",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      toast({
+        title: "Password too short",
+        description: "Password must be at least 6 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    resetPasswordMutation.mutate({ userId: selectedUser.id, newPassword });
   };
 
   const getRoleBadgeVariant = (role: string) => {
@@ -374,6 +428,61 @@ export default function AdminUsers() {
                   onCheckedChange={setEditIsActive}
                   data-testid="switch-is-active"
                 />
+              </div>
+
+              <div className="space-y-2 pt-2 border-t">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Password Reset</Label>
+                  {!showPasswordReset && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowPasswordReset(true)}
+                      data-testid="button-show-password-reset"
+                    >
+                      <Key className="h-3.5 w-3.5 mr-1.5" />
+                      Reset Password
+                    </Button>
+                  )}
+                </div>
+                {showPasswordReset && (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Input
+                        type="password"
+                        placeholder="Enter new password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        data-testid="input-new-password"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Minimum 6 characters required
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setShowPasswordReset(false);
+                          setNewPassword("");
+                        }}
+                        disabled={resetPasswordMutation.isPending}
+                        data-testid="button-cancel-password-reset"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={handleResetPassword}
+                        disabled={resetPasswordMutation.isPending || !newPassword.trim()}
+                        data-testid="button-confirm-password-reset"
+                      >
+                        {resetPasswordMutation.isPending ? "Resetting..." : "Reset Password"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {(userDetails as any).profile && (

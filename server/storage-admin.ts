@@ -180,6 +180,34 @@ export class AdminStorage {
     } as User;
   }
 
+  async resetUserPassword(id: string, newPassword: string): Promise<boolean> {
+    const { hashPassword } = await import('./auth');
+    const hashedPassword = await hashPassword(newPassword);
+    
+    const { data, error } = await supabase
+      .from('users')
+      .update({ password: hashedPassword })
+      .eq('id', id)
+      .select('id')
+      .single();
+    
+    // Distinguish between "not found" and actual errors
+    if (error) {
+      // Check if it's a "no rows" error (user not found)
+      if (error.code === 'PGRST116' || error.message?.includes('JSON object requested')) {
+        return false; // User not found
+      }
+      // Other errors should be thrown
+      throw error;
+    }
+    
+    if (!data) {
+      return false; // No data means user not found
+    }
+    
+    return true;
+  }
+
   async getUserCount(): Promise<number> {
     const { count, error } = await supabase
       .from('users')
