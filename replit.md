@@ -2,22 +2,50 @@
 
 ## Overview
 
-Shift Surge is a progressive web application (PWA) that connects service-industry workers with exclusive restaurant promotions. The platform enables restaurants to create and manage targeted deals while workers can discover, claim, and redeem offers through a mobile-first interface.
+Shift Surge is a progressive web application (PWA) that connects service-industry workers with exclusive restaurant promotions. The platform enables restaurants to create and manage targeted deals while workers can discover, claim, and redeem offers through a mobile-first interface. Includes a superadmin dashboard for platform management.
 
 **Core Value Proposition:**
 - **For Workers**: Instant access to exclusive deals from local restaurants with simple claim/redeem workflows
 - **For Restaurants**: Targeted promotion management with real-time analytics and audience segmentation
+- **For Superadmins**: Complete platform oversight with user management, audit logging, and business metrics
 
 **Tech Stack Summary:**
 - Frontend: React + TypeScript + Vite (PWA-ready)
 - UI: Tailwind CSS + shadcn/ui (Radix UI primitives)
 - Backend: Express.js with session-based authentication
-- Database: PostgreSQL via Drizzle ORM
+- Database: **Supabase PostgreSQL** (via @supabase/supabase-js client)
 - State Management: TanStack Query (server state)
 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+
+## Superadmin System
+
+**Access:** Completely separate authentication flow from regular users
+- Login endpoint: `/api/admin/login`
+- Dedicated admin routes under `/api/admin/*`
+- Role-based middleware ensures only `super_admin` role can access
+
+**Admin Credentials (Development):**
+- Email: `admin@shiftsurge.com`
+- Password: `admin123`
+
+**Admin Dashboard Pages:**
+1. **Dashboard** (`/admin/dashboard`) - Business metrics and recent audit logs
+2. **User Management** (`/admin/users`) - Filter by role (All/Worker/Restaurant/Superadmin), search, and modify users
+3. **Organizations** (`/admin/organizations`) - Manage restaurant organizations (future multi-location support)
+
+**Audit Logging:**
+- All business-critical actions logged to `audit_logs` table
+- Tracks: user signups, promotions created/updated, redemptions, admin actions
+- Helper function: `adminStorage.createAuditLogSimple(actorId, action, subject, details)`
+- Displayed in admin dashboard with filtering capabilities
+
+**Security:**
+- Separate session handling for admin vs regular users
+- Admin routes protected by `requireAdmin` middleware
+- No cross-contamination between admin and user authentication flows
 
 ## System Architecture
 
@@ -89,26 +117,31 @@ Preferred communication style: Simple, everyday language.
 
 ### Database Schema
 
+**Supabase Instance:** `eopeghiffhenhetwfnfv.supabase.co`
+**Connection:** Managed via encrypted Replit secrets (SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_DB_PASSWORD)
+
 **Core Tables:**
-- `users` - Authentication (email, hashed password, role enum)
-- `worker_profiles` - Worker details (name, role, verification status)
-- `restaurant_profiles` - Restaurant details (name, address, logo)
-- `promotions` - Deal definitions (title, description, discount, scheduling, status)
-- `claims` - Worker claims with unique codes and expiration
-- `redemptions` - Redemption records with timestamps
+- `users` - Authentication (email, hashed password, role enum: worker/restaurant/super_admin)
+- `worker_profiles` - Worker details (user_id, name, worker_role, is_verified)
+- `restaurant_profiles` - Restaurant details (user_id, name, address, logo_url)
+- `promotions` - Deal definitions (restaurant_id FK, title, description, discount_type/value, status, max_claims, impressions)
+- `claims` - Worker claims (promotion_id, worker_id, code, claimed_at, expires_at, is_redeemed)
+- `redemptions` - Simple redemption tracking (claim_id FK, redeemed_at)
+- `organizations` - Admin-only table for future multi-location support
+- `audit_logs` - Superadmin action tracking (actor_id, action, subject, details, created_at)
 
 **Key Design Decisions:**
-- UUID primary keys via `gen_random_uuid()`
-- Enum types for roles and statuses (type safety + database constraints)
-- Cascade deletes for referential integrity
-- Timestamp tracking (created_at) on all entities
-- Promotion status workflow: draft → active/scheduled → paused/expired
+- VARCHAR primary keys with `gen_random_uuid()` for universally unique IDs
+- PostgreSQL enums for roles (user_role) and statuses (promotion_status, worker_role)
+- Direct relationships: promotions → restaurant_profiles (no organization layer in main flow)
+- Simplified redemptions table (only claim_id reference)
+- Comprehensive audit logging for all business-critical actions
 
-**ORM Strategy:**
-- Drizzle ORM for type-safe queries
-- Neon serverless driver for PostgreSQL
-- Schema-first design with `drizzle-zod` for validation
-- Migration management via `drizzle-kit push`
+**Database Strategy:**
+- **Supabase PostgreSQL** as the single source of truth
+- Raw Supabase client queries (no ORM) for maximum flexibility
+- TypeScript types derived from Drizzle schema definitions (for type safety only)
+- Schema changes executed via direct SQL in Supabase SQL Editor
 
 ### Design System
 
@@ -152,10 +185,12 @@ Preferred communication style: Simple, everyday language.
 - Class-variance-authority for component variants
 - Lucide React for iconography
 
-**Database & ORM:**
-- PostgreSQL database (connection via DATABASE_URL env variable)
-- @neondatabase/serverless for serverless PostgreSQL driver
-- Drizzle ORM v0.39.1 for type-safe queries
+**Database:**
+- **Supabase PostgreSQL** (primary database)
+  - @supabase/supabase-js client for all database operations
+  - Connection via SUPABASE_URL and SUPABASE_ANON_KEY secrets
+  - Direct database access via SUPABASE_DB_PASSWORD for migrations
+- Drizzle schema definitions (for TypeScript types only, not used for queries)
 - drizzle-zod for schema-to-Zod validation
 
 **Authentication & Sessions:**
