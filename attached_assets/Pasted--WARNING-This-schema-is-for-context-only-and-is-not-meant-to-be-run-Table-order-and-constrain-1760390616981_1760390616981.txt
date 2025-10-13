@@ -1,0 +1,69 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.claims (
+  id character varying NOT NULL DEFAULT gen_random_uuid(),
+  promotion_id character varying NOT NULL,
+  worker_id character varying NOT NULL,
+  code text NOT NULL UNIQUE,
+  claimed_at timestamp without time zone NOT NULL DEFAULT now(),
+  expires_at timestamp without time zone NOT NULL,
+  is_redeemed boolean NOT NULL DEFAULT false,
+  CONSTRAINT claims_pkey PRIMARY KEY (id),
+  CONSTRAINT claims_promotion_id_promotions_id_fk FOREIGN KEY (promotion_id) REFERENCES public.promotions(id),
+  CONSTRAINT claims_worker_id_worker_profiles_id_fk FOREIGN KEY (worker_id) REFERENCES public.worker_profiles(id)
+);
+CREATE TABLE public.promotions (
+  id character varying NOT NULL DEFAULT gen_random_uuid(),
+  restaurant_id character varying NOT NULL,
+  title text NOT NULL,
+  description text NOT NULL,
+  image_url text,
+  discount_type text NOT NULL,
+  discount_value text NOT NULL,
+  status USER-DEFINED NOT NULL DEFAULT 'draft'::promotion_status,
+  start_date timestamp without time zone,
+  end_date timestamp without time zone,
+  max_claims integer,
+  current_claims integer NOT NULL DEFAULT 0,
+  impressions integer NOT NULL DEFAULT 0,
+  created_at timestamp without time zone NOT NULL DEFAULT now(),
+  updated_at timestamp without time zone NOT NULL DEFAULT now(),
+  CONSTRAINT promotions_pkey PRIMARY KEY (id),
+  CONSTRAINT promotions_restaurant_id_restaurant_profiles_id_fk FOREIGN KEY (restaurant_id) REFERENCES public.restaurant_profiles(id)
+);
+CREATE TABLE public.redemptions (
+  id character varying NOT NULL DEFAULT gen_random_uuid(),
+  claim_id character varying NOT NULL,
+  redeemed_at timestamp without time zone NOT NULL DEFAULT now(),
+  CONSTRAINT redemptions_pkey PRIMARY KEY (id),
+  CONSTRAINT redemptions_claim_id_claims_id_fk FOREIGN KEY (claim_id) REFERENCES public.claims(id)
+);
+CREATE TABLE public.restaurant_profiles (
+  id character varying NOT NULL DEFAULT gen_random_uuid(),
+  user_id character varying NOT NULL,
+  name text NOT NULL,
+  address text,
+  logo_url text,
+  created_at timestamp without time zone NOT NULL DEFAULT now(),
+  CONSTRAINT restaurant_profiles_pkey PRIMARY KEY (id),
+  CONSTRAINT restaurant_profiles_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.users (
+  id character varying NOT NULL DEFAULT gen_random_uuid(),
+  email text NOT NULL UNIQUE,
+  password text NOT NULL,
+  role USER-DEFINED NOT NULL,
+  created_at timestamp without time zone NOT NULL DEFAULT now(),
+  CONSTRAINT users_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.worker_profiles (
+  id character varying NOT NULL DEFAULT gen_random_uuid(),
+  user_id character varying NOT NULL,
+  name text NOT NULL,
+  worker_role USER-DEFINED NOT NULL,
+  is_verified boolean NOT NULL DEFAULT false,
+  created_at timestamp without time zone NOT NULL DEFAULT now(),
+  CONSTRAINT worker_profiles_pkey PRIMARY KEY (id),
+  CONSTRAINT worker_profiles_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
