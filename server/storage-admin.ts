@@ -42,7 +42,7 @@ export class AdminStorage {
           role: user.role,
           isActive: user.is_active ?? true,
           createdAt: user.created_at,
-          workerRole: null,
+          position: null,
           workerName: null,
           restaurantName: null,
           organizationId: null,
@@ -56,7 +56,7 @@ export class AdminStorage {
         role: user.role,
         isActive: user.is_active ?? true,
         createdAt: user.created_at,
-        workerRole: user.worker_profiles?.[0]?.worker_role || null,
+        position: user.worker_profiles?.[0]?.worker_role || null,
         workerName: user.worker_profiles?.[0]?.name || null,
         restaurantName: user.restaurant_profiles?.[0]?.name || null,
         organizationId: null, // organization_id column doesn't exist yet
@@ -83,6 +83,24 @@ export class AdminStorage {
       throw error;
     }
 
+    // Transform worker profile to use 'position' instead of 'worker_role'
+    let profile = null;
+    if (data.worker_profiles?.[0]) {
+      const wp = data.worker_profiles[0];
+      profile = {
+        name: wp.name,
+        position: wp.worker_role,  // Map worker_role to position
+        isVerified: wp.is_verified,
+      };
+    } else if (data.restaurant_profiles?.[0]) {
+      const rp = data.restaurant_profiles[0];
+      profile = {
+        name: rp.name,
+        address: rp.address,
+        logoUrl: rp.logo_url,
+      };
+    }
+
     return {
       user: {
         id: data.id,
@@ -92,7 +110,7 @@ export class AdminStorage {
         isActive: data.is_active ?? true,
         createdAt: data.created_at,
       },
-      profile: data.worker_profiles?.[0] || data.restaurant_profiles?.[0] || null,
+      profile,
     };
   }
 

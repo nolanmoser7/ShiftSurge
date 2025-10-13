@@ -18,7 +18,7 @@ export function SignupForm({ onSuccess }: { onSuccess?: () => void }) {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"worker" | "restaurant">("worker");
   const [name, setName] = useState("");
-  const [workerRole, setWorkerRole] = useState("server");
+  const [position, setPosition] = useState("server");
   const [address, setAddress] = useState("");
   const { signup } = useAuth();
   const { toast } = useToast();
@@ -31,7 +31,7 @@ export function SignupForm({ onSuccess }: { onSuccess?: () => void }) {
         password,
         role,
         name,
-        ...(role === "worker" ? { workerRole } : { address }),
+        ...(role === "worker" ? { position } : { address }),
       });
       toast({ title: "Success", description: "Account created successfully" });
       onSuccess?.();
@@ -95,9 +95,9 @@ export function SignupForm({ onSuccess }: { onSuccess?: () => void }) {
         </div>
         {role === "worker" ? (
           <div className="space-y-2">
-            <Label htmlFor="workerRole">Role</Label>
-            <Select value={workerRole} onValueChange={setWorkerRole}>
-              <SelectTrigger id="workerRole" data-testid="select-worker-role">
+            <Label htmlFor="position">Position</Label>
+            <Select value={position} onValueChange={setPosition}>
+              <SelectTrigger id="position" data-testid="select-position">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

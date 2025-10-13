@@ -29,7 +29,7 @@ function formatAuditLogMessage(log: any): { title: string; description: string; 
       case "WORKER_ADDED":
         return {
           title: "Worker Added",
-          description: `${details.name} (${details.workerRole}) - ${details.email}`,
+          description: `${details.name} (${details.position}) - ${details.email}`,
           variant: "outline"
         };
       

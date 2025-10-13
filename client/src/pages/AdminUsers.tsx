@@ -299,9 +299,9 @@ export default function AdminUsers() {
                             <Badge variant={getRoleBadgeVariant(user.role)} data-testid={`badge-role-${user.id}`}>
                               {user.role}
                             </Badge>
-                            {user.workerRole && (
-                              <Badge variant="outline" className="text-xs" data-testid={`badge-worker-role-${user.id}`}>
-                                {user.workerRole}
+                            {user.position && (
+                              <Badge variant="outline" className="text-xs" data-testid={`badge-position-${user.id}`}>
+                                {user.position}
                               </Badge>
                             )}
                           </div>
@@ -345,9 +345,9 @@ export default function AdminUsers() {
                               <Badge variant={getRoleBadgeVariant(user.role)} data-testid={`badge-role-${user.id}`}>
                                 {user.role}
                               </Badge>
-                              {user.workerRole && (
-                                <Badge variant="outline" className="text-xs" data-testid={`badge-worker-role-${user.id}`}>
-                                  {user.workerRole}
+                              {user.position && (
+                                <Badge variant="outline" className="text-xs" data-testid={`badge-position-${user.id}`}>
+                                  {user.position}
                                 </Badge>
                               )}
                             </div>
@@ -497,11 +497,11 @@ export default function AdminUsers() {
                         </span>
                       </div>
                     )}
-                    {(userDetails as any).profile.workerRole && (
+                    {(userDetails as any).profile.position && (
                       <div className="flex flex-col sm:flex-row sm:items-center gap-1">
-                        <span className="text-sm text-muted-foreground min-w-[100px]">Worker Role:</span>
-                        <Badge variant="outline" className="text-xs w-fit" data-testid="text-detail-worker-role">
-                          {(userDetails as any).profile.workerRole}
+                        <span className="text-sm text-muted-foreground min-w-[100px]">Position:</span>
+                        <Badge variant="outline" className="text-xs w-fit" data-testid="text-detail-position">
+                          {(userDetails as any).profile.position}
                         </Badge>
                       </div>
                     )}

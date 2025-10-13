@@ -10,7 +10,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.post("/api/auth/signup", async (req: AuthRequest, res) => {
     try {
-      const { email, password, role, name, workerRole, address, logoUrl } = req.body;
+      const { email, password, role, name, position, address, logoUrl } = req.body;
       
       // Validate input
       const schema = z.object({
@@ -18,12 +18,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         password: z.string().min(6),
         role: z.enum(["worker", "restaurant"]),
         name: z.string().min(1),
-        workerRole: z.enum(["server", "bartender", "chef", "host", "manager", "other"]).optional(),
+        position: z.enum(["server", "bartender", "chef", "host", "manager", "other"]).optional(),
         address: z.string().optional(),
         logoUrl: z.string().optional(),
       });
       
-      const data = schema.parse({ email, password, role, name, workerRole, address, logoUrl });
+      const data = schema.parse({ email, password, role, name, position, address, logoUrl });
 
       // Check if user exists
       const existingUser = await storage.getUserByEmail(data.email);
@@ -44,7 +44,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.createWorkerProfile({
           userId: user.id,
           name: data.name,
-          workerRole: data.workerRole || "other",
+          position: data.position || "other",
           isVerified: false,
         });
 
@@ -56,7 +56,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           JSON.stringify({ 
             email: user.email,
             name: data.name,
-            workerRole: data.workerRole || "other"
+            position: data.position || "other"
           })
         );
       } else {

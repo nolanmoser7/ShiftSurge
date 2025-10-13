@@ -6,7 +6,7 @@ import { z } from "zod";
 // Enums
 export const userRoleEnum = pgEnum("user_role", ["worker", "restaurant", "super_admin"]);
 export const promotionStatusEnum = pgEnum("promotion_status", ["draft", "active", "scheduled", "paused", "expired"]);
-export const workerRoleEnum = pgEnum("worker_role", ["server", "bartender", "chef", "host", "manager", "other"]);
+export const positionEnum = pgEnum("worker_role", ["server", "bartender", "chef", "host", "manager", "other"]);
 
 // Users table - stores authentication and basic profile info
 export const users = pgTable("users", {
@@ -23,7 +23,7 @@ export const workerProfiles = pgTable("worker_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  workerRole: workerRoleEnum("worker_role").notNull(),
+  position: positionEnum("worker_role").notNull(), // Mapped from DB column "worker_role" to TS property "position"
   isVerified: boolean("is_verified").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -129,7 +129,7 @@ export class SupabaseStorage implements IStorage {
       .insert({
         user_id: profile.userId,
         name: profile.name,
-        worker_role: profile.workerRole,
+        worker_role: profile.position,
         is_verified: profile.isVerified || false
       })
       .select()
