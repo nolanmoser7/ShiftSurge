@@ -37,6 +37,8 @@ export interface IStorage {
   createOrganization(org: InsertOrganization): Promise<Organization>;
   updateOrganization(id: string, org: Partial<Organization>): Promise<Organization | undefined>;
   getOrganizations(): Promise<Organization[]>;
+  getNeighborhoods(): Promise<any[]>;
+  updateProfileOrgId(profileId: string, orgId: string, profileType: 'worker' | 'restaurant'): Promise<void>;
 
   // Promotion operations
   getPromotion(id: string): Promise<Promotion | undefined>;
@@ -192,6 +194,10 @@ export class SupabaseStorage implements IStorage {
         name: org.name,
         address: org.address || null,
         neighborhood_id: org.neighborhoodId || null,
+        lat: org.lat || null,
+        lng: org.lng || null,
+        staff_min: org.staffMin || null,
+        staff_max: org.staffMax || null,
         logo_url: org.logoUrl || null,
         subscription_status: org.subscriptionStatus || 'active',
         subscription_plan_id: org.subscriptionPlanId || null,
@@ -238,6 +244,33 @@ export class SupabaseStorage implements IStorage {
     
     if (error) throw error;
     return data as Organization[];
+  }
+
+  async getNeighborhoods(): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('neighborhoods')
+      .select('*')
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+    
+    if (error) throw error;
+    return (data || []).map((n: any) => ({
+      id: n.id,
+      name: n.name,
+      slug: n.slug,
+      description: n.description,
+    }));
+  }
+
+  async updateProfileOrgId(profileId: string, orgId: string, profileType: 'worker' | 'restaurant'): Promise<void> {
+    const table = profileType === 'worker' ? 'worker_profiles' : 'restaurant_profiles';
+    
+    const { error } = await supabase
+      .from(table)
+      .update({ org_id: orgId })
+      .eq('id', profileId);
+    
+    if (error) throw error;
   }
 
   // Promotion operations

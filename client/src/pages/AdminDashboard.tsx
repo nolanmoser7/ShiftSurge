@@ -1,10 +1,16 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import AdminLayout from "@/components/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, Building2, Activity, FileText, Tag, Ticket, CheckCircle, TrendingUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Users, Building2, Activity, FileText, Tag, Ticket, CheckCircle, TrendingUp, UserPlus } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { InviteQRCode } from "@/components/InviteQRCode";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 // Helper to format audit log entries for display
 function formatAuditLogMessage(log: any): { title: string; description: string; variant: any } {
@@ -79,9 +85,40 @@ function formatAuditLogMessage(log: any): { title: string; description: string; 
 }
 
 export default function AdminDashboard() {
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [inviteData, setInviteData] = useState<any>(null);
+  const { toast } = useToast();
+
   const { data: metrics, isLoading } = useQuery({
     queryKey: ["/api/admin/dashboard"],
   });
+
+  const createInviteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/invites", {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setInviteData(data);
+      toast({
+        title: "Success",
+        description: "Admin invite created successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create invite",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleGenerateInvite = () => {
+    setInviteData(null);
+    setInviteDialogOpen(true);
+    createInviteMutation.mutate();
+  };
 
   if (isLoading) {
     return (
@@ -153,7 +190,16 @@ export default function AdminDashboard() {
   return (
     <AdminLayout>
       <div className="space-y-4 sm:space-y-6">
-        <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
+          <Button 
+            onClick={handleGenerateInvite}
+            data-testid="button-generate-admin-invite"
+          >
+            <UserPlus className="w-4 h-4 mr-2" />
+            Generate Admin Invite
+          </Button>
+        </div>
 
         <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-3">
           {statsCards.map((stat) => (
@@ -306,6 +352,33 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
+        <DialogContent className="sm:max-w-lg" data-testid="dialog-admin-invite">
+          <DialogHeader>
+            <DialogTitle>Admin Invite Generated</DialogTitle>
+            <DialogDescription>
+              Share this invite link or QR code with the restaurant admin. This invite expires at the end of today.
+            </DialogDescription>
+          </DialogHeader>
+          {createInviteMutation.isPending ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+            </div>
+          ) : inviteData ? (
+            <div className="space-y-4">
+              <InviteQRCode 
+                value={inviteData.url}
+                title="Admin Invitation"
+                description={`Expires: ${format(new Date(inviteData.expiresAt), 'PPp')}`}
+              />
+              <div className="text-sm text-muted-foreground" data-testid="text-invite-expiration">
+                <strong>Expiration:</strong> {format(new Date(inviteData.expiresAt), 'PPp')}
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }

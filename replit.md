@@ -47,6 +47,55 @@ Preferred communication style: Simple, everyday language.
 - Admin routes protected by `requireAdmin` middleware
 - No cross-contamination between admin and user authentication flows
 
+## Restaurant Admin Onboarding System
+
+**Overview:**
+Invite-based onboarding flow allowing super admins to onboard restaurant managers who then set up their restaurant organization through a guided wizard.
+
+**Admin Invite Generation:**
+- Super admin generates daily-expiring QR code invites from dashboard
+- POST `/api/admin/invites` creates invite token with metadata
+- QR code displayed via InviteQRCode component (uses qrcode.react)
+- Invite URL format: `/signup?invite={TOKEN}`
+
+**Restaurant Manager Signup:**
+- Manager scans QR code or clicks invite link
+- SignupWithInvite page validates token via GET `/api/invites/validate/:token`
+- If valid, displays signup form (email, password, name)
+- POST `/api/auth/signup-with-invite` creates user with role='restaurant'
+- Restaurant profile created WITHOUT org_id (set during wizard)
+
+**Setup Wizard Flow:**
+- On first login, WizardCheck detects `org_id IS NULL` via GET `/api/restaurant/wizard-status`
+- Auto-redirects to `/restaurant/wizard`
+- 3-step wizard collects:
+  1. Restaurant Name
+  2. Location (neighborhood dropdown, optional lat/lng/address)
+  3. Staff Capacity (min/max staff numbers)
+- POST `/api/restaurant/complete-wizard` creates organization and links profile
+- Success page shows CTAs: View Dashboard, Create Promotion, Generate Staff Invite
+
+**Database Tables:**
+- `invite_tokens` - Token storage (token, invite_type enum, created_by, org_id, expires_at, max_uses, current_uses)
+- `neighborhoods` - Location taxonomy (name, slug, is_active)
+- `organizations` - Enhanced with lat, lng, staff_min, staff_max, neighborhood_id
+- Both `worker_profiles` and `restaurant_profiles` now have `org_id` foreign key
+
+**Security:**
+- Daily token expiration (expires_at set to end of day)
+- Usage tracking prevents over-use (max_uses, current_uses)
+- Token validation on every use
+- Wizard routes protected by `requireRestaurant` middleware
+- Wizard access only allowed when `org_id IS NULL`
+
+**Key Routes:**
+- POST `/api/admin/invites` - Generate admin invite
+- GET `/api/invites/validate/:token` - Validate invite token
+- POST `/api/auth/signup-with-invite` - Signup with token
+- GET `/api/restaurant/wizard-status` - Check if wizard needed
+- GET `/api/restaurant/neighborhoods` - Get neighborhood options
+- POST `/api/restaurant/complete-wizard` - Complete wizard setup
+
 ## System Architecture
 
 ### Frontend Architecture

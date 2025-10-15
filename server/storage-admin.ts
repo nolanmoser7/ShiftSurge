@@ -710,6 +710,132 @@ export class AdminStorage {
       return [];
     }
   }
+
+  // Invite token operations
+  async createInviteToken(params: {
+    createdByUserId: string;
+    organizationId: string;
+    inviteType: 'admin' | 'staff';
+    expiresAt: Date;
+    maxUses?: number;
+  }): Promise<{ id: string; token: string }> {
+    // Generate a unique token
+    const token = `${params.inviteType}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+    
+    const { data, error } = await supabase
+      .from('invite_tokens')
+      .insert({
+        organization_id: params.organizationId,
+        token,
+        created_by_user_id: params.createdByUserId,
+        invite_type: params.inviteType,
+        expires_at: params.expiresAt.toISOString(),
+        max_uses: params.maxUses || 1,
+        current_uses: 0,
+        is_active: true,
+      })
+      .select('id, token')
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async validateInviteToken(token: string): Promise<{
+    valid: boolean;
+    inviteData?: {
+      id: string;
+      inviteType: string;
+      organizationId: string;
+      currentUses: number;
+      maxUses: number;
+    };
+    error?: string;
+  }> {
+    const { data, error } = await supabase
+      .from('invite_tokens')
+      .select('*')
+      .eq('token', token)
+      .single();
+
+    if (error || !data) {
+      return { valid: false, error: 'Invalid invite token' };
+    }
+
+    // Check if token is active
+    if (!data.is_active) {
+      return { valid: false, error: 'Invite token is inactive' };
+    }
+
+    // Check expiration
+    if (data.expires_at && new Date(data.expires_at) < new Date()) {
+      return { valid: false, error: 'Invite token has expired' };
+    }
+
+    // Check max uses
+    if (data.max_uses && data.current_uses >= data.max_uses) {
+      return { valid: false, error: 'Invite token has reached maximum uses' };
+    }
+
+    return {
+      valid: true,
+      inviteData: {
+        id: data.id,
+        inviteType: data.invite_type,
+        organizationId: data.organization_id,
+        currentUses: data.current_uses,
+        maxUses: data.max_uses,
+      },
+    };
+  }
+
+  async incrementInviteUsage(inviteId: string): Promise<void> {
+    const { error } = await supabase.rpc('increment_invite_usage', {
+      invite_id: inviteId,
+    });
+
+    // If RPC doesn't exist, fallback to manual increment
+    if (error?.code === '42883') {
+      const { data: current, error: fetchError } = await supabase
+        .from('invite_tokens')
+        .select('current_uses')
+        .eq('id', inviteId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const { error: updateError } = await supabase
+        .from('invite_tokens')
+        .update({ current_uses: (current.current_uses || 0) + 1 })
+        .eq('id', inviteId);
+
+      if (updateError) throw updateError;
+    } else if (error) {
+      throw error;
+    }
+  }
+
+  async getInvitesByCreator(createdByUserId: string): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('invite_tokens')
+      .select('*')
+      .eq('created_by_user_id', createdByUserId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    return (data || []).map((invite: any) => ({
+      id: invite.id,
+      token: invite.token,
+      inviteType: invite.invite_type,
+      organizationId: invite.organization_id,
+      currentUses: invite.current_uses,
+      maxUses: invite.max_uses,
+      expiresAt: invite.expires_at,
+      isActive: invite.is_active,
+      createdAt: invite.created_at,
+    }));
+  }
 }
 
 export const adminStorage = new AdminStorage();

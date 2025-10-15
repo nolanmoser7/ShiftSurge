@@ -644,6 +644,241 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Invite token routes
+  app.post("/api/admin/invites", requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      // Super admin generates admin invite for restaurant managers
+      const expiresAt = new Date();
+      expiresAt.setHours(23, 59, 59, 999); // End of current day
+      
+      // Create a temporary organization placeholder for the invite
+      // The actual organization will be created during the setup wizard
+      const tempOrg = await storage.createOrganization({
+        name: `Pending Setup - ${Date.now()}`,
+        isActive: false,
+      });
+
+      const invite = await adminStorage.createInviteToken({
+        createdByUserId: req.userId!,
+        organizationId: tempOrg.id,
+        inviteType: 'admin',
+        expiresAt,
+        maxUses: 1,
+      });
+
+      // Log admin action
+      await adminStorage.createAuditLogSimple(
+        req.userId!,
+        "ADMIN_INVITE_CREATED",
+        `invite:${invite.id}`,
+        JSON.stringify({ token: invite.token, expiresAt })
+      );
+
+      res.json({ 
+        id: invite.id,
+        token: invite.token,
+        inviteType: 'admin',
+        expiresAt,
+        url: `${req.protocol}://${req.get('host')}/signup?invite=${invite.token}`
+      });
+    } catch (error) {
+      console.error("Create invite error:", error);
+      res.status(500).json({ error: "Failed to create invite" });
+    }
+  });
+
+  app.get("/api/invites/validate/:token", async (req: AuthRequest, res) => {
+    try {
+      const { token } = req.params;
+      const validation = await adminStorage.validateInviteToken(token);
+      
+      if (!validation.valid) {
+        return res.status(400).json({ valid: false, error: validation.error });
+      }
+
+      res.json({ 
+        valid: true,
+        inviteType: validation.inviteData?.inviteType,
+        organizationId: validation.inviteData?.organizationId,
+      });
+    } catch (error) {
+      console.error("Validate invite error:", error);
+      res.status(500).json({ error: "Failed to validate invite" });
+    }
+  });
+
+  app.post("/api/auth/signup-with-invite", async (req: AuthRequest, res) => {
+    try {
+      const { email, password, name, inviteToken } = req.body;
+      
+      // Validate input
+      const schema = z.object({
+        email: z.string().email(),
+        password: z.string().min(6),
+        name: z.string().min(1),
+        inviteToken: z.string(),
+      });
+      
+      const data = schema.parse({ email, password, name, inviteToken });
+
+      // Validate invite token
+      const validation = await adminStorage.validateInviteToken(data.inviteToken);
+      if (!validation.valid) {
+        return res.status(400).json({ error: validation.error });
+      }
+
+      // Check if user exists
+      const existingUser = await storage.getUserByEmail(data.email);
+      if (existingUser) {
+        return res.status(400).json({ error: "Email already registered" });
+      }
+
+      // Hash password and create user
+      const hashedPassword = await hashPassword(data.password);
+      const user = await storage.createUser({
+        email: data.email,
+        password: hashedPassword,
+        role: 'restaurant', // Admin invites are for restaurant managers
+      });
+
+      // Create restaurant profile WITHOUT org_id (will be set in wizard)
+      await storage.createRestaurantProfile({
+        userId: user.id,
+        name: data.name,
+      });
+
+      // Increment invite usage
+      await adminStorage.incrementInviteUsage(validation.inviteData!.id);
+
+      // Set session
+      (req as any).session.userId = user.id;
+      (req as any).session.userRole = user.role;
+
+      // Log business action
+      await adminStorage.createAuditLogSimple(
+        user.id,
+        "ADMIN_SIGNUP_WITH_INVITE",
+        `user:${user.id}`,
+        JSON.stringify({ 
+          email: user.email,
+          name: data.name,
+          inviteType: validation.inviteData?.inviteType
+        })
+      );
+
+      res.json({ 
+        user: { id: user.id, email: user.email, role: user.role },
+        needsWizard: true // Signal that wizard is required
+      });
+    } catch (error) {
+      console.error("Signup with invite error:", error);
+      res.status(400).json({ error: error instanceof Error ? error.message : "Signup failed" });
+    }
+  });
+
+  // Restaurant wizard routes
+  app.get("/api/restaurant/wizard-status", requireRestaurant, async (req: AuthRequest, res) => {
+    try {
+      const profile = await storage.getRestaurantProfile(req.userId!);
+      if (!profile) {
+        return res.status(404).json({ error: "Profile not found" });
+      }
+
+      // Check if org_id is NULL
+      const needsWizard = !profile.orgId;
+      
+      res.json({ 
+        needsWizard,
+        profile: {
+          name: profile.name,
+          address: profile.address,
+          logoUrl: profile.logoUrl,
+        }
+      });
+    } catch (error) {
+      console.error("Wizard status error:", error);
+      res.status(500).json({ error: "Failed to check wizard status" });
+    }
+  });
+
+  app.get("/api/restaurant/neighborhoods", requireRestaurant, async (req: AuthRequest, res) => {
+    try {
+      const neighborhoods = await storage.getNeighborhoods();
+      res.json(neighborhoods);
+    } catch (error) {
+      console.error("Get neighborhoods error:", error);
+      res.status(500).json({ error: "Failed to fetch neighborhoods" });
+    }
+  });
+
+  app.post("/api/restaurant/complete-wizard", requireRestaurant, async (req: AuthRequest, res) => {
+    try {
+      const { restaurantName, neighborhoodId, lat, lng, staffMin, staffMax, address } = req.body;
+      
+      // Validate input
+      const schema = z.object({
+        restaurantName: z.string().min(1),
+        neighborhoodId: z.string(),
+        lat: z.string().optional(),
+        lng: z.string().optional(),
+        staffMin: z.number().int().positive().optional(),
+        staffMax: z.number().int().positive().optional(),
+        address: z.string().optional(),
+      });
+      
+      const data = schema.parse({ restaurantName, neighborhoodId, lat, lng, staffMin, staffMax, address });
+
+      // Get current profile
+      const profile = await storage.getRestaurantProfile(req.userId!);
+      if (!profile) {
+        return res.status(404).json({ error: "Profile not found" });
+      }
+
+      // Check if wizard already completed
+      if (profile.orgId) {
+        return res.status(400).json({ error: "Wizard already completed" });
+      }
+
+      // Create organization
+      const organization = await storage.createOrganization({
+        name: data.restaurantName,
+        address: data.address,
+        neighborhoodId: data.neighborhoodId,
+        lat: data.lat,
+        lng: data.lng,
+        staffMin: data.staffMin,
+        staffMax: data.staffMax,
+        isActive: true,
+      });
+
+      // Update profile with org_id
+      await storage.updateProfileOrgId(profile.id, organization.id, 'restaurant');
+
+      // Log business action
+      await adminStorage.createAuditLogSimple(
+        req.userId!,
+        "WIZARD_COMPLETED",
+        `organization:${organization.id}`,
+        JSON.stringify({ 
+          restaurantName: data.restaurantName,
+          neighborhood: data.neighborhoodId,
+          staffCapacity: { min: data.staffMin, max: data.staffMax }
+        })
+      );
+
+      res.json({ 
+        success: true,
+        organization: {
+          id: organization.id,
+          name: organization.name,
+        }
+      });
+    } catch (error) {
+      console.error("Complete wizard error:", error);
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to complete wizard" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

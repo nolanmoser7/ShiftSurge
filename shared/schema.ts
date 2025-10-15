@@ -7,6 +7,7 @@ import { z } from "zod";
 export const userRoleEnum = pgEnum("user_role", ["worker", "restaurant", "super_admin"]);
 export const promotionStatusEnum = pgEnum("promotion_status", ["draft", "active", "scheduled", "paused", "expired"]);
 export const positionEnum = pgEnum("worker_role", ["server", "bartender", "chef", "host", "manager", "other"]);
+export const inviteTypeEnum = pgEnum("invite_type", ["admin", "staff"]);
 
 // Users table - stores authentication and basic profile info
 export const users = pgTable("users", {
@@ -18,10 +19,21 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Neighborhoods - for location taxonomy
+export const neighborhoods = pgTable("neighborhoods", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),
+  slug: text("slug").notNull().unique(),
+  description: text("description"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Worker profiles (hospitality staff)
 export const workerProfiles = pgTable("worker_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  orgId: varchar("org_id").references(() => organizations.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   position: positionEnum("worker_role").notNull(), // Mapped from DB column "worker_role" to TS property "position"
   isVerified: boolean("is_verified").default(false).notNull(),
@@ -32,6 +44,7 @@ export const workerProfiles = pgTable("worker_profiles", {
 export const restaurantProfiles = pgTable("restaurant_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  orgId: varchar("org_id").references(() => organizations.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   address: text("address"),
   logoUrl: text("logo_url"),
@@ -75,12 +88,16 @@ export const redemptions = pgTable("redemptions", {
   redeemedAt: timestamp("redeemed_at").defaultNow().notNull(),
 });
 
-// Organizations - admin use only
+// Organizations - restaurant entities
 export const organizations = pgTable("organizations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   address: text("address"),
-  neighborhoodId: varchar("neighborhood_id"),
+  neighborhoodId: varchar("neighborhood_id").references(() => neighborhoods.id, { onDelete: "set null" }),
+  lat: text("lat"),
+  lng: text("lng"),
+  staffMin: integer("staff_min"),
+  staffMax: integer("staff_max"),
   logoUrl: text("logo_url"),
   subscriptionStatus: text("subscription_status").default("active"),
   subscriptionPlanId: text("subscription_plan_id"),
@@ -90,6 +107,20 @@ export const organizations = pgTable("organizations", {
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Invite tokens - for onboarding admins and staff
+export const inviteTokens = pgTable("invite_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  createdByUserId: varchar("created_by_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  inviteType: inviteTypeEnum("invite_type"),
+  maxUses: integer("max_uses"),
+  currentUses: integer("current_uses").default(0).notNull(),
+  expiresAt: timestamp("expires_at"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Audit logs - track all superadmin actions
@@ -117,6 +148,8 @@ export const insertClaimSchema = createInsertSchema(claims).omit({ id: true, cla
 export const insertRedemptionSchema = createInsertSchema(redemptions).omit({ id: true, redeemedAt: true });
 export const insertOrganizationSchema = createInsertSchema(organizations).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, createdAt: true });
+export const insertNeighborhoodSchema = createInsertSchema(neighborhoods).omit({ id: true, createdAt: true });
+export const insertInviteTokenSchema = createInsertSchema(inviteTokens).omit({ id: true, createdAt: true });
 
 // Types
 export type User = typeof users.$inferSelect;
@@ -142,3 +175,9 @@ export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
 
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+
+export type Neighborhood = typeof neighborhoods.$inferSelect;
+export type InsertNeighborhood = z.infer<typeof insertNeighborhoodSchema>;
+
+export type InviteToken = typeof inviteTokens.$inferSelect;
+export type InsertInviteToken = z.infer<typeof insertInviteTokenSchema>;
