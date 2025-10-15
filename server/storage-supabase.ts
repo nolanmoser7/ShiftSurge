@@ -153,7 +153,17 @@ export class SupabaseStorage implements IStorage {
       if (error.code === 'PGRST116') return undefined;
       throw error;
     }
-    return data as RestaurantProfile;
+    
+    // Transform snake_case to camelCase
+    return {
+      id: data.id,
+      userId: data.user_id,
+      orgId: data.org_id,
+      name: data.name,
+      address: data.address,
+      logoUrl: data.logo_url,
+      createdAt: data.created_at,
+    } as RestaurantProfile;
   }
 
   async createRestaurantProfile(profile: InsertRestaurantProfile): Promise<RestaurantProfile> {
@@ -169,7 +179,17 @@ export class SupabaseStorage implements IStorage {
       .single();
     
     if (error) throw error;
-    return data as RestaurantProfile;
+    
+    // Transform snake_case to camelCase
+    return {
+      id: data.id,
+      userId: data.user_id,
+      orgId: data.org_id,
+      name: data.name,
+      address: data.address,
+      logoUrl: data.logo_url,
+      createdAt: data.created_at,
+    } as RestaurantProfile;
   }
 
   // Organization operations
