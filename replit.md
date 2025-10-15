@@ -70,16 +70,23 @@ Invite-based onboarding flow allowing super admins to onboard restaurant manager
 - Auto-redirects to `/restaurant/wizard`
 - 2-step wizard collects:
   1. Location (neighborhood dropdown, optional lat/lng/address)
-  2. Staff Capacity (min/max staff numbers)
+  2. Goals (multi-select checkboxes: increase_table_turns, move_inventory, improve_staff_benefits, fill_more_seats, increase_tips)
 - POST `/api/restaurant/complete-wizard` uses saved restaurant name from profile
 - Organization auto-created with name format: "[restaurant name]'s Organization"
+- Goals saved as TEXT[] array in organizations.goals column
 - Success page shows CTAs: View Dashboard, Create Promotion, Generate Staff Invite
 
 **Database Tables:**
 - `invite_tokens` - Token storage (token, invite_type enum, created_by, org_id, expires_at, max_uses, current_uses)
 - `neighborhoods` - Location taxonomy (name, slug, is_active)
-- `organizations` - Enhanced with lat, lng, staff_min, staff_max, neighborhood_id
+- `organizations` - Enhanced with lat, lng, neighborhood_id, goals (TEXT[] array)
 - Both `worker_profiles` and `restaurant_profiles` now have `org_id` foreign key
+
+**Goals Feature:**
+- Goals stored as TEXT[] array with values: increase_table_turns, move_inventory, improve_staff_benefits, fill_more_seats, increase_tips
+- Selected during Step 2 of restaurant wizard
+- Used for targeted promotion recommendations and business insights
+- Migration: `migrations/003_add_goals_to_organizations.sql`
 
 **Security:**
 - Daily token expiration (expires_at set to end of day)
