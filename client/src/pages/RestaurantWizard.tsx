@@ -28,7 +28,7 @@ const wizardSchema = z.object({
   lat: z.string().optional(),
   lng: z.string().optional(),
   address: z.string().optional(),
-  goals: z.array(z.string()).min(1, "Please select at least one goal"),
+  goals: z.array(z.string()),
 });
 
 type WizardFormData = z.infer<typeof wizardSchema>;
@@ -41,6 +41,7 @@ export default function RestaurantWizard() {
 
   const form = useForm<WizardFormData>({
     resolver: zodResolver(wizardSchema),
+    mode: "onChange",
     defaultValues: {
       neighborhoodId: "",
       lat: "",
@@ -84,6 +85,14 @@ export default function RestaurantWizard() {
     if (step < 2) {
       setStep(step + 1);
     } else {
+      // Validate goals on step 2
+      if (data.goals.length === 0) {
+        form.setError("goals", {
+          type: "manual",
+          message: "Please select at least one goal"
+        });
+        return;
+      }
       completeMutation.mutate(data);
     }
   };
