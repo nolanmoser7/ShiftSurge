@@ -1,5 +1,4 @@
 import { supabase } from "./supabase";
-import sql from "./db-direct";
 import {
   type User,
   type Organization,
@@ -723,31 +722,23 @@ export class AdminStorage {
     // Generate a unique token
     const token = `${params.inviteType}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
     
-    // Use direct PostgreSQL connection to bypass Supabase PostgREST cache
-    const result = await sql`
-      INSERT INTO invite_tokens (
-        organization_id,
+    const { data, error } = await supabase
+      .from('invite_tokens')
+      .insert({
+        organization_id: params.organizationId || null,
         token,
-        created_by_user_id,
-        invite_type,
-        expires_at,
-        max_uses,
-        current_uses,
-        is_active
-      ) VALUES (
-        ${params.organizationId || null},
-        ${token},
-        ${params.createdByUserId},
-        ${params.inviteType},
-        ${params.expiresAt.toISOString()},
-        ${params.maxUses || 1},
-        0,
-        true
-      )
-      RETURNING id, token
-    `;
+        created_by_user_id: params.createdByUserId,
+        invite_type: params.inviteType,
+        expires_at: params.expiresAt.toISOString(),
+        max_uses: params.maxUses || 1,
+        current_uses: 0,
+        is_active: true,
+      })
+      .select('id, token')
+      .single();
 
-    return result[0] as { id: string; token: string };
+    if (error) throw error;
+    return data;
   }
 
   async validateInviteToken(token: string): Promise<{
@@ -761,14 +752,13 @@ export class AdminStorage {
     };
     error?: string;
   }> {
-    // Use direct PostgreSQL connection
-    const result = await sql`
-      SELECT * FROM invite_tokens WHERE token = ${token} LIMIT 1
-    `;
+    const { data, error } = await supabase
+      .from('invite_tokens')
+      .select('*')
+      .eq('token', token)
+      .single();
 
-    const data = result[0];
-
-    if (!data) {
+    if (error || !data) {
       return { valid: false, error: 'Invalid invite token' };
     }
 
@@ -800,23 +790,32 @@ export class AdminStorage {
   }
 
   async incrementInviteUsage(inviteId: string): Promise<void> {
-    // Use direct PostgreSQL connection
-    await sql`
-      UPDATE invite_tokens 
-      SET current_uses = current_uses + 1 
-      WHERE id = ${inviteId}
-    `;
+    const { data: current, error: fetchError } = await supabase
+      .from('invite_tokens')
+      .select('current_uses')
+      .eq('id', inviteId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    const { error: updateError } = await supabase
+      .from('invite_tokens')
+      .update({ current_uses: (current.current_uses || 0) + 1 })
+      .eq('id', inviteId);
+
+    if (updateError) throw updateError;
   }
 
   async getInvitesByCreator(createdByUserId: string): Promise<any[]> {
-    // Use direct PostgreSQL connection
-    const result = await sql`
-      SELECT * FROM invite_tokens 
-      WHERE created_by_user_id = ${createdByUserId}
-      ORDER BY created_at DESC
-    `;
+    const { data, error } = await supabase
+      .from('invite_tokens')
+      .select('*')
+      .eq('created_by_user_id', createdByUserId)
+      .order('created_at', { ascending: false });
 
-    return result.map((invite: any) => ({
+    if (error) throw error;
+
+    return (data || []).map((invite: any) => ({
       id: invite.id,
       token: invite.token,
       inviteType: invite.invite_type,
