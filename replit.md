@@ -61,18 +61,18 @@ Invite-based onboarding flow allowing super admins to onboard restaurant manager
 **Restaurant Manager Signup:**
 - Manager scans QR code or clicks invite link
 - SignupWithInvite page validates token via GET `/api/invites/validate/:token`
-- If valid, displays signup form (email, password, name)
+- If valid, displays signup form (email, password, manager name, restaurant name)
 - POST `/api/auth/signup-with-invite` creates user with role='restaurant'
-- Restaurant profile created WITHOUT org_id (set during wizard)
+- Restaurant profile created with restaurant name, WITHOUT org_id (set during wizard)
 
 **Setup Wizard Flow:**
 - On first login, WizardCheck detects `org_id IS NULL` via GET `/api/restaurant/wizard-status`
 - Auto-redirects to `/restaurant/wizard`
-- 3-step wizard collects:
-  1. Restaurant Name
-  2. Location (neighborhood dropdown, optional lat/lng/address)
-  3. Staff Capacity (min/max staff numbers)
-- POST `/api/restaurant/complete-wizard` creates organization and links profile
+- 2-step wizard collects:
+  1. Location (neighborhood dropdown, optional lat/lng/address)
+  2. Staff Capacity (min/max staff numbers)
+- POST `/api/restaurant/complete-wizard` uses saved restaurant name from profile
+- Organization auto-created with name format: "[restaurant name]'s Organization"
 - Success page shows CTAs: View Dashboard, Create Promotion, Generate Staff Invite
 
 **Database Tables:**

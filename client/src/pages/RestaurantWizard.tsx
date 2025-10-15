@@ -15,7 +15,6 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, ArrowRight, CheckCircle, Sparkles } from "lucide-react";
 
 const wizardSchema = z.object({
-  restaurantName: z.string().min(1, "Restaurant name is required"),
   neighborhoodId: z.string().min(1, "Please select a neighborhood"),
   lat: z.string().optional(),
   lng: z.string().optional(),
@@ -43,7 +42,6 @@ export default function RestaurantWizard() {
   const form = useForm<WizardFormData>({
     resolver: zodResolver(wizardSchema),
     defaultValues: {
-      restaurantName: "",
       neighborhoodId: "",
       lat: "",
       lng: "",
@@ -60,7 +58,6 @@ export default function RestaurantWizard() {
   const completeMutation = useMutation({
     mutationFn: async (data: WizardFormData) => {
       const payload = {
-        restaurantName: data.restaurantName,
         neighborhoodId: data.neighborhoodId,
         lat: data.lat || undefined,
         lng: data.lng || undefined,
@@ -86,7 +83,7 @@ export default function RestaurantWizard() {
   });
 
   const onSubmit = (data: WizardFormData) => {
-    if (step < 3) {
+    if (step < 2) {
       setStep(step + 1);
     } else {
       completeMutation.mutate(data);
@@ -99,7 +96,7 @@ export default function RestaurantWizard() {
     }
   };
 
-  const progress = (step / 3) * 100;
+  const progress = (step / 2) * 100;
 
   if (isSuccess) {
     return (
@@ -157,38 +154,13 @@ export default function RestaurantWizard() {
       <Card className="max-w-2xl w-full" data-testid="card-restaurant-wizard">
         <CardHeader>
           <CardTitle className="text-2xl">Restaurant Setup</CardTitle>
-          <CardDescription>Step {step} of 3</CardDescription>
+          <CardDescription>Step {step} of 2</CardDescription>
           <Progress value={progress} className="mt-2" data-testid="progress-wizard" />
         </CardHeader>
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               {step === 1 && (
-                <div className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="restaurantName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Restaurant Name</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Enter your restaurant name"
-                            {...field}
-                            data-testid="input-restaurant-name"
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          This will be displayed to workers browsing promotions
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              )}
-
-              {step === 2 && (
                 <div className="space-y-4">
                   <FormField
                     control={form.control}
@@ -280,7 +252,7 @@ export default function RestaurantWizard() {
                 </div>
               )}
 
-              {step === 3 && (
+              {step === 2 && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <FormField
@@ -356,7 +328,7 @@ export default function RestaurantWizard() {
                 >
                   {completeMutation.isPending ? (
                     "Completing..."
-                  ) : step === 3 ? (
+                  ) : step === 2 ? (
                     "Complete Setup"
                   ) : (
                     <>

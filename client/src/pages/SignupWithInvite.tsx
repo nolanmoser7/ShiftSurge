@@ -17,6 +17,7 @@ const signupSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   name: z.string().min(1, "Name is required"),
+  restaurantName: z.string().min(1, "Restaurant name is required"),
 });
 
 type SignupFormData = z.infer<typeof signupSchema>;
@@ -57,6 +58,7 @@ export default function SignupWithInvite() {
       email: "",
       password: "",
       name: "",
+      restaurantName: "",
     },
   });
 
@@ -180,12 +182,30 @@ export default function SignupWithInvite() {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Name</FormLabel>
+                    <FormLabel>Your Name</FormLabel>
                     <FormControl>
                       <Input
                         placeholder="Your name"
                         {...field}
                         data-testid="input-signup-name"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="restaurantName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Restaurant Name</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g., The Golden Spoon"
+                        {...field}
+                        data-testid="input-signup-restaurant-name"
                       />
                     </FormControl>
                     <FormMessage />

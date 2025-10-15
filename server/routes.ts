@@ -704,17 +704,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/auth/signup-with-invite", async (req: AuthRequest, res) => {
     try {
-      const { email, password, name, inviteToken } = req.body;
+      const { email, password, name, restaurantName, inviteToken } = req.body;
       
       // Validate input
       const schema = z.object({
         email: z.string().email(),
         password: z.string().min(6),
         name: z.string().min(1),
+        restaurantName: z.string().min(1),
         inviteToken: z.string(),
       });
       
-      const data = schema.parse({ email, password, name, inviteToken });
+      const data = schema.parse({ email, password, name, restaurantName, inviteToken });
 
       // Validate invite token
       const validation = await adminStorage.validateInviteToken(data.inviteToken);
@@ -739,7 +740,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create restaurant profile WITHOUT org_id (will be set in wizard)
       await storage.createRestaurantProfile({
         userId: user.id,
-        name: data.name,
+        name: data.restaurantName, // Use restaurant name instead of manager name
       });
 
       // Increment invite usage
@@ -808,11 +809,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/restaurant/complete-wizard", requireRestaurant, async (req: AuthRequest, res) => {
     try {
-      const { restaurantName, neighborhoodId, lat, lng, staffMin, staffMax, address } = req.body;
+      const { neighborhoodId, lat, lng, staffMin, staffMax, address } = req.body;
       
-      // Validate input
+      // Validate input (restaurantName removed - using from profile)
       const schema = z.object({
-        restaurantName: z.string().min(1),
         neighborhoodId: z.string(),
         lat: z.string().optional(),
         lng: z.string().optional(),
@@ -821,7 +821,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         address: z.string().optional(),
       });
       
-      const data = schema.parse({ restaurantName, neighborhoodId, lat, lng, staffMin, staffMax, address });
+      const data = schema.parse({ neighborhoodId, lat, lng, staffMin, staffMax, address });
 
       // Get current profile
       const profile = await storage.getRestaurantProfile(req.userId!);
@@ -834,9 +834,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Wizard already completed" });
       }
 
+      // Use restaurant name from profile and format organization name
+      const restaurantName = profile.name;
+      const organizationName = `${restaurantName}'s Organization`;
+
       // Create organization
       const organization = await storage.createOrganization({
-        name: data.restaurantName,
+        name: organizationName,
         address: data.address,
         neighborhoodId: data.neighborhoodId,
         lat: data.lat,
@@ -855,7 +859,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         "WIZARD_COMPLETED",
         `organization:${organization.id}`,
         JSON.stringify({ 
-          restaurantName: data.restaurantName,
+          restaurantName,
+          organizationName,
           neighborhood: data.neighborhoodId,
           staffCapacity: { min: data.staffMin, max: data.staffMax }
         })
