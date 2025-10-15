@@ -10,25 +10,25 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, ArrowRight, CheckCircle, Sparkles } from "lucide-react";
+
+const GOAL_OPTIONS = [
+  { value: "increase_table_turns", label: "Increase table turns in slow hours" },
+  { value: "move_inventory", label: "Move inventory more efficiently" },
+  { value: "improve_staff_benefits", label: "Improve staff benefits" },
+  { value: "fill_more_seats", label: "Fill more seats" },
+  { value: "increase_tips", label: "Increase tips for workers" },
+] as const;
 
 const wizardSchema = z.object({
   neighborhoodId: z.string().min(1, "Please select a neighborhood"),
   lat: z.string().optional(),
   lng: z.string().optional(),
   address: z.string().optional(),
-  staffMin: z.number().int().positive().optional(),
-  staffMax: z.number().int().positive().optional(),
-}).refine((data) => {
-  if (data.staffMin && data.staffMax) {
-    return data.staffMax >= data.staffMin;
-  }
-  return true;
-}, {
-  message: "Max staff must be greater than or equal to min staff",
-  path: ["staffMax"],
+  goals: z.array(z.string()).min(1, "Please select at least one goal"),
 });
 
 type WizardFormData = z.infer<typeof wizardSchema>;
@@ -46,8 +46,7 @@ export default function RestaurantWizard() {
       lat: "",
       lng: "",
       address: "",
-      staffMin: undefined,
-      staffMax: undefined,
+      goals: [],
     },
   });
 
@@ -62,8 +61,7 @@ export default function RestaurantWizard() {
         lat: data.lat || undefined,
         lng: data.lng || undefined,
         address: data.address || undefined,
-        staffMin: data.staffMin || undefined,
-        staffMax: data.staffMax || undefined,
+        goals: data.goals,
       };
       const res = await apiRequest("POST", "/api/restaurant/complete-wizard", payload);
       return res.json();
@@ -254,55 +252,57 @@ export default function RestaurantWizard() {
 
               {step === 2 && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="staffMin"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Minimum Staff (Optional)</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              placeholder="5"
-                              {...field}
-                              onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                              value={field.value || ""}
-                              data-testid="input-staff-min"
-                            />
-                          </FormControl>
+                  <FormField
+                    control={form.control}
+                    name="goals"
+                    render={() => (
+                      <FormItem>
+                        <div className="mb-4">
+                          <FormLabel className="text-base">What are your goals for using Shift Surge?</FormLabel>
                           <FormDescription>
-                            Minimum number of staff during slow hours
+                            Select all that apply to help us personalize your experience
                           </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="staffMax"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Maximum Staff (Optional)</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              placeholder="20"
-                              {...field}
-                              onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                              value={field.value || ""}
-                              data-testid="input-staff-max"
+                        </div>
+                        <div className="space-y-3">
+                          {GOAL_OPTIONS.map((goal) => (
+                            <FormField
+                              key={goal.value}
+                              control={form.control}
+                              name="goals"
+                              render={({ field }) => {
+                                return (
+                                  <FormItem
+                                    key={goal.value}
+                                    className="flex flex-row items-start space-x-3 space-y-0"
+                                  >
+                                    <FormControl>
+                                      <Checkbox
+                                        checked={field.value?.includes(goal.value)}
+                                        onCheckedChange={(checked) => {
+                                          return checked
+                                            ? field.onChange([...field.value, goal.value])
+                                            : field.onChange(
+                                                field.value?.filter(
+                                                  (value) => value !== goal.value
+                                                )
+                                              )
+                                        }}
+                                        data-testid={`checkbox-goal-${goal.value}`}
+                                      />
+                                    </FormControl>
+                                    <FormLabel className="text-sm font-normal cursor-pointer">
+                                      {goal.label}
+                                    </FormLabel>
+                                  </FormItem>
+                                )
+                              }}
                             />
-                          </FormControl>
-                          <FormDescription>
-                            Maximum number of staff during peak hours
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                          ))}
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
               )}
 

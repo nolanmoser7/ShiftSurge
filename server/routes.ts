@@ -809,19 +809,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/restaurant/complete-wizard", requireRestaurant, async (req: AuthRequest, res) => {
     try {
-      const { neighborhoodId, lat, lng, staffMin, staffMax, address } = req.body;
+      const { neighborhoodId, lat, lng, goals, address } = req.body;
       
       // Validate input (restaurantName removed - using from profile)
       const schema = z.object({
         neighborhoodId: z.string(),
         lat: z.string().optional(),
         lng: z.string().optional(),
-        staffMin: z.number().int().positive().optional(),
-        staffMax: z.number().int().positive().optional(),
+        goals: z.array(z.string()).min(1, "Please select at least one goal"),
         address: z.string().optional(),
       });
       
-      const data = schema.parse({ neighborhoodId, lat, lng, staffMin, staffMax, address });
+      const data = schema.parse({ neighborhoodId, lat, lng, goals, address });
 
       // Get current profile
       const profile = await storage.getRestaurantProfile(req.userId!);
@@ -845,8 +844,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         neighborhoodId: data.neighborhoodId,
         lat: data.lat,
         lng: data.lng,
-        staffMin: data.staffMin,
-        staffMax: data.staffMax,
+        goals: data.goals,
         isActive: true,
       });
 
@@ -862,7 +860,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           restaurantName,
           organizationName,
           neighborhood: data.neighborhoodId,
-          staffCapacity: { min: data.staffMin, max: data.staffMax }
+          goals: data.goals
         })
       );
 
