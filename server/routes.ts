@@ -651,16 +651,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const expiresAt = new Date();
       expiresAt.setHours(23, 59, 59, 999); // End of current day
       
-      // Create a temporary organization placeholder for the invite
-      // The actual organization will be created during the setup wizard
-      const tempOrg = await storage.createOrganization({
-        name: `Pending Setup - ${Date.now()}`,
-        isActive: false,
-      });
-
+      // Admin invites don't have an organization yet (created during wizard)
       const invite = await adminStorage.createInviteToken({
         createdByUserId: req.userId!,
-        organizationId: tempOrg.id,
+        organizationId: null,
         inviteType: 'admin',
         expiresAt,
         maxUses: 1,
@@ -681,9 +675,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         expiresAt,
         url: `${req.protocol}://${req.get('host')}/signup?invite=${invite.token}`
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Create invite error:", error);
-      res.status(500).json({ error: "Failed to create invite" });
+      console.error("Error details:", error.message, error.stack);
+      res.status(500).json({ error: "Failed to create invite", details: error.message });
     }
   });
 

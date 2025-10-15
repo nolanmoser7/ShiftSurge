@@ -714,7 +714,7 @@ export class AdminStorage {
   // Invite token operations
   async createInviteToken(params: {
     createdByUserId: string;
-    organizationId: string;
+    organizationId?: string | null;
     inviteType: 'admin' | 'staff';
     expiresAt: Date;
     maxUses?: number;
@@ -725,7 +725,7 @@ export class AdminStorage {
     const { data, error } = await supabase
       .from('invite_tokens')
       .insert({
-        organization_id: params.organizationId,
+        organization_id: params.organizationId || null,
         token,
         created_by_user_id: params.createdByUserId,
         invite_type: params.inviteType,
