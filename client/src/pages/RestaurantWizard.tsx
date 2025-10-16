@@ -23,10 +23,22 @@ const GOAL_OPTIONS = [
   { value: "increase_tips", label: "Increase tips for workers" },
 ] as const;
 
+// Step 1 schema - only validate Google Business link
+const step1Schema = z.object({
+  googleBusinessLink: z.string().min(1, "Please provide your Google Business link").url("Please enter a valid URL"),
+});
+
+// Step 2 schema - validate employee limit and goals
+const step2Schema = z.object({
+  maxEmployees: z.coerce.number().min(1, "Please enter at least 1 employee").max(1000, "Maximum 1000 employees allowed"),
+  goals: z.array(z.string()).min(1, "Please select at least one goal"),
+});
+
+// Combined schema for final submission
 const wizardSchema = z.object({
   googleBusinessLink: z.string().min(1, "Please provide your Google Business link").url("Please enter a valid URL"),
   maxEmployees: z.coerce.number().min(1, "Please enter at least 1 employee").max(1000, "Maximum 1000 employees allowed"),
-  goals: z.array(z.string()),
+  goals: z.array(z.string()).min(1, "Please select at least one goal"),
 });
 
 type WizardFormData = z.infer<typeof wizardSchema>;
@@ -38,7 +50,6 @@ export default function RestaurantWizard() {
   const { toast } = useToast();
 
   const form = useForm<WizardFormData>({
-    resolver: zodResolver(wizardSchema),
     mode: "onChange",
     defaultValues: {
       googleBusinessLink: "",
@@ -52,7 +63,7 @@ export default function RestaurantWizard() {
     mutationFn: async (data: WizardFormData) => {
       const payload = {
         googleBusinessLink: data.googleBusinessLink,
-        maxEmployees: data.maxEmployees,
+        maxEmployees: Number(data.maxEmployees), // Ensure it's a number
         goals: data.goals,
       };
       const res = await apiRequest("POST", "/api/restaurant/complete-wizard", payload);
@@ -73,24 +84,41 @@ export default function RestaurantWizard() {
   });
 
   const onSubmit = (data: WizardFormData) => {
-    if (step < 2) {
-      setStep(step + 1);
-    } else {
-      // Validate step 2 fields
-      if (data.goals.length === 0) {
-        form.setError("goals", {
+    if (step === 1) {
+      // Validate Step 1: Google Business Link
+      const result = step1Schema.safeParse({ googleBusinessLink: data.googleBusinessLink });
+      if (!result.success) {
+        const error = result.error.errors[0];
+        form.setError("googleBusinessLink", {
           type: "manual",
-          message: "Please select at least one goal"
+          message: error.message
         });
         return;
       }
-      if (!data.maxEmployees || data.maxEmployees < 1) {
-        form.setError("maxEmployees", {
-          type: "manual",
-          message: "Please enter a valid number of employees"
-        });
+      // Move to step 2
+      setStep(2);
+    } else if (step === 2) {
+      // Validate Step 2: Employee limit and goals
+      const result = step2Schema.safeParse({ 
+        maxEmployees: data.maxEmployees,
+        goals: data.goals 
+      });
+      if (!result.success) {
+        const error = result.error.errors[0];
+        if (error.path[0] === 'maxEmployees') {
+          form.setError("maxEmployees", {
+            type: "manual",
+            message: error.message
+          });
+        } else if (error.path[0] === 'goals') {
+          form.setError("goals", {
+            type: "manual",
+            message: error.message
+          });
+        }
         return;
       }
+      // Submit to backend
       completeMutation.mutate(data);
     }
   };

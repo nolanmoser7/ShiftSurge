@@ -22,35 +22,52 @@ interface PlaceDetails {
  * - https://goo.gl/maps/xxx
  * - https://g.page/restaurant-name
  */
-export function extractPlaceIdFromUrl(url: string): string | null {
+export function extractPlaceIdFromUrl(url: string): { placeId?: string; placeName?: string; lat?: number; lng?: number } | null {
   try {
     const urlObj = new URL(url);
     
-    // Format 1: CID parameter (can convert to place_id)
-    if (urlObj.searchParams.has('cid')) {
-      // CID needs to be converted via API, return special marker
-      return `cid:${urlObj.searchParams.get('cid')}`;
+    // Format 1: ftid parameter (actual Place ID)
+    if (urlObj.searchParams.has('ftid')) {
+      return { placeId: urlObj.searchParams.get('ftid')! };
     }
     
-    // Format 2: Place ID in data parameter
+    // Format 2: CID parameter
+    if (urlObj.searchParams.has('cid')) {
+      return { placeId: `cid:${urlObj.searchParams.get('cid')}` };
+    }
+    
+    // Format 3: Extract from data parameter (may be hex geocode, not Place ID)
     const dataParam = urlObj.searchParams.get('data');
     if (dataParam) {
-      // Extract place ID from data string (format: !1s[PLACE_ID])
-      const placeIdMatch = dataParam.match(/!1s([A-Za-z0-9_-]+)/);
+      // Try to find actual Place ID (ChIJ format)
+      const placeIdMatch = dataParam.match(/!1s(ChIJ[A-Za-z0-9_-]+)/);
       if (placeIdMatch) {
-        return placeIdMatch[1];
+        return { placeId: placeIdMatch[1] };
+      }
+      
+      // If hex geocode found, extract place name and coords instead
+      const hexMatch = dataParam.match(/!1s0x[0-9a-f]+:0x[0-9a-f]+/);
+      if (hexMatch) {
+        // Extract place name from URL path
+        const nameMatch = urlObj.pathname.match(/\/place\/([^/@]+)/);
+        const placeName = nameMatch ? decodeURIComponent(nameMatch[1].replace(/\+/g, ' ')) : undefined;
+        
+        // Extract coordinates from URL path
+        const coordMatch = urlObj.pathname.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+        if (coordMatch && placeName) {
+          return {
+            placeName,
+            lat: parseFloat(coordMatch[1]),
+            lng: parseFloat(coordMatch[2])
+          };
+        }
       }
     }
     
-    // Format 3: Short URL or g.page - need to resolve via Find Place API
-    if (urlObj.hostname === 'goo.gl' || urlObj.hostname === 'g.page') {
-      return `shorturl:${url}`;
-    }
-    
-    // Format 4: Direct place ID in URL path
-    const pathMatch = urlObj.pathname.match(/place\/([A-Za-z0-9_-]{10,})/);
+    // Format 4: Direct Place ID in path
+    const pathMatch = urlObj.pathname.match(/place\/([A-Za-z0-9_-]{20,})/);
     if (pathMatch) {
-      return pathMatch[1];
+      return { placeId: pathMatch[1] };
     }
     
     return null;
@@ -120,6 +137,29 @@ export async function fetchGooglePlaceDetails(
 }
 
 /**
+ * Find Place ID using Find Place From Text API
+ */
+async function findPlaceByNameAndLocation(
+  name: string,
+  lat: number,
+  lng: number,
+  apiKey: string
+): Promise<string> {
+  const input = encodeURIComponent(name);
+  const location = `${lat},${lng}`;
+  const url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${input}&inputtype=textquery&locationbias=circle:100@${location}&fields=place_id&key=${apiKey}`;
+  
+  const response = await fetch(url);
+  const data = await response.json();
+  
+  if (data.status !== 'OK' || !data.candidates || data.candidates.length === 0) {
+    throw new Error(`Could not find place "${name}" near the provided location`);
+  }
+  
+  return data.candidates[0].place_id;
+}
+
+/**
  * Helper function to validate and extract place details from a Google Business link
  * This is the main function that should be called from the API endpoint
  */
@@ -127,11 +167,29 @@ export async function getRestaurantFromGoogleLink(
   googleLink: string,
   apiKey: string
 ): Promise<PlaceDetails> {
-  // Extract place ID from URL
-  const placeId = extractPlaceIdFromUrl(googleLink);
+  // Extract place ID or name/coords from URL
+  const extracted = extractPlaceIdFromUrl(googleLink);
   
-  if (!placeId) {
+  if (!extracted) {
     throw new Error('Could not extract Place ID from the provided Google link. Please ensure you\'re using a valid Google Maps or Google Business link.');
+  }
+  
+  let placeId: string;
+  
+  // If we have a direct Place ID, use it
+  if (extracted.placeId) {
+    placeId = extracted.placeId;
+  }
+  // Otherwise, use name and coordinates to find the Place ID
+  else if (extracted.placeName && extracted.lat && extracted.lng) {
+    placeId = await findPlaceByNameAndLocation(
+      extracted.placeName,
+      extracted.lat,
+      extracted.lng,
+      apiKey
+    );
+  } else {
+    throw new Error('Could not extract enough information from the Google link');
   }
   
   // Fetch details from Google Places API
