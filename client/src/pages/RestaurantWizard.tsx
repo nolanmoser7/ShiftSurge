@@ -24,10 +24,8 @@ const GOAL_OPTIONS = [
 ] as const;
 
 const wizardSchema = z.object({
-  neighborhoodId: z.string().min(1, "Please select a neighborhood"),
-  lat: z.string().optional(),
-  lng: z.string().optional(),
-  address: z.string().optional(),
+  googleBusinessLink: z.string().min(1, "Please provide your Google Business link").url("Please enter a valid URL"),
+  maxEmployees: z.coerce.number().min(1, "Please enter at least 1 employee").max(1000, "Maximum 1000 employees allowed"),
   goals: z.array(z.string()),
 });
 
@@ -43,25 +41,18 @@ export default function RestaurantWizard() {
     resolver: zodResolver(wizardSchema),
     mode: "onChange",
     defaultValues: {
-      neighborhoodId: "",
-      lat: "",
-      lng: "",
-      address: "",
+      googleBusinessLink: "",
+      maxEmployees: undefined,
       goals: [],
     },
   });
 
-  const { data: neighborhoods, isLoading: loadingNeighborhoods } = useQuery({
-    queryKey: ["/api/restaurant/neighborhoods"],
-  });
 
   const completeMutation = useMutation({
     mutationFn: async (data: WizardFormData) => {
       const payload = {
-        neighborhoodId: data.neighborhoodId,
-        lat: data.lat || undefined,
-        lng: data.lng || undefined,
-        address: data.address || undefined,
+        googleBusinessLink: data.googleBusinessLink,
+        maxEmployees: data.maxEmployees,
         goals: data.goals,
       };
       const res = await apiRequest("POST", "/api/restaurant/complete-wizard", payload);
@@ -171,90 +162,31 @@ export default function RestaurantWizard() {
                 <div className="space-y-4">
                   <FormField
                     control={form.control}
-                    name="neighborhoodId"
+                    name="googleBusinessLink"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Neighborhood</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                          disabled={loadingNeighborhoods}
-                        >
-                          <FormControl>
-                            <SelectTrigger data-testid="select-neighborhood">
-                              <SelectValue placeholder="Select a neighborhood" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {Array.isArray(neighborhoods) && neighborhoods.map((neighborhood: any) => (
-                              <SelectItem key={neighborhood.id} value={neighborhood.id}>
-                                {neighborhood.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormLabel>Google Business Link</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="https://maps.google.com/..."
+                            {...field}
+                            data-testid="input-google-business-link"
+                          />
+                        </FormControl>
                         <FormDescription>
-                          Choose the neighborhood where your restaurant is located
+                          Paste your restaurant's Google Maps or Google Business link. We'll automatically extract your address, phone, rating, and other details.
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-
-                  <FormField
-                    control={form.control}
-                    name="address"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Address (Optional)</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="123 Main St, City, State"
-                            {...field}
-                            data-testid="input-address"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="lat"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Latitude (Optional)</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="40.7128"
-                              {...field}
-                              data-testid="input-latitude"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="lng"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Longitude (Optional)</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="-74.0060"
-                              {...field}
-                              data-testid="input-longitude"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                  <div className="bg-muted/50 p-4 rounded-lg space-y-2 text-sm">
+                    <p className="font-medium">How to find your Google Business link:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                      <li>Search for your restaurant on Google Maps</li>
+                      <li>Click the "Share" button</li>
+                      <li>Copy the link and paste it above</li>
+                    </ol>
                   </div>
                 </div>
               )}
