@@ -6,7 +6,7 @@ import { z } from "zod";
 // Enums
 export const userRoleEnum = pgEnum("user_role", ["worker", "restaurant", "super_admin"]);
 export const promotionStatusEnum = pgEnum("promotion_status", ["draft", "active", "scheduled", "paused", "expired"]);
-export const positionEnum = pgEnum("worker_role", ["server", "bartender", "chef", "host", "manager", "other"]);
+export const positionEnum = pgEnum("worker_role", ["server", "bartender", "barback", "busser/foodrunner", "chef", "cook", "dishwasher", "host", "manager", "other"]);
 export const inviteTypeEnum = pgEnum("invite_type", ["admin", "staff"]);
 
 // Users table - stores authentication and basic profile info
@@ -98,6 +98,7 @@ export const organizations = pgTable("organizations", {
   lng: text("lng"),
   goals: text("goals").array(),
   maxEmployees: integer("max_employees"),
+  activeStaff: integer("active_staff").default(0).notNull(),
   googlePlaceId: varchar("google_place_id", { length: 255 }),
   phone: text("phone"),
   businessHours: text("business_hours"),
