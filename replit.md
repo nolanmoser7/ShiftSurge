@@ -69,18 +69,38 @@ Invite-based onboarding flow allowing super admins to onboard restaurant manager
 - On first login, WizardCheck detects `org_id IS NULL` via GET `/api/restaurant/wizard-status`
 - Auto-redirects to `/restaurant/wizard`
 - 2-step wizard collects:
-  1. Location (neighborhood dropdown, optional lat/lng/address)
-  2. Goals (multi-select checkboxes: increase_table_turns, move_inventory, improve_staff_benefits, fill_more_seats, increase_tips)
+  1. **Google Business Link**: Auto-extracts restaurant details via Google Places API (address, phone, rating, business hours, coordinates)
+  2. **Employee Limit & Goals**: Max employees to onboard (stored + 5 buffer), business goals multi-select
 - POST `/api/restaurant/complete-wizard` uses saved restaurant name from profile
 - Organization auto-created with name format: "[restaurant name]'s Organization"
+- Google Places API integration extracts and saves: address, phone, rating, business_hours, google_place_id, lat/lng
+- Employee limit stored as max_employees (actual limit = user input + 5)
 - Goals saved as TEXT[] array in organizations.goals column
 - Success page shows CTAs: View Dashboard, Create Promotion, Generate Staff Invite
 
 **Database Tables:**
 - `invite_tokens` - Token storage (token, invite_type enum, created_by, org_id, expires_at, max_uses, current_uses)
 - `neighborhoods` - Location taxonomy (name, slug, is_active)
-- `organizations` - Enhanced with lat, lng, neighborhood_id, goals (TEXT[] array)
+- `organizations` - Enhanced with lat, lng, neighborhood_id, goals (TEXT[] array), max_employees, google_place_id, phone, business_hours, rating, address
 - Both `worker_profiles` and `restaurant_profiles` now have `org_id` foreign key
+
+**Google Places Integration:**
+- **API Key**: Stored in GOOGLE_PLACES_API_KEY secret
+- **URL Parsing**: Handles multiple Google Maps URL formats
+  - Direct Place IDs (ChIJ format)
+  - Hex geocode IDs (0x format) - Extracts name/coords → uses Find Place API
+  - Standard Google Maps share links
+- **Auto-extraction**: Address, phone, rating, business hours, coordinates
+- **Fallback Logic**: When Place ID not found, uses Find Place From Text API with restaurant name + coordinates
+- **User Guidance**: UI warns against CID-only URLs and guides users to use proper share links
+- **Implementation**: `server/google-places.ts` utility module
+- **Migration**: `migrations/004_add_business_details_to_organizations.sql`
+
+**Employee Limit Feature:**
+- User inputs desired max employees in wizard Step 2
+- System adds +5 buffer for flexibility (e.g., input 20 → stored as 25)
+- Stored in organizations.max_employees column
+- Used for staff onboarding limits and capacity planning
 
 **Goals Feature:**
 - Goals stored as TEXT[] array with values: increase_table_turns, move_inventory, improve_staff_benefits, fill_more_seats, increase_tips
@@ -100,8 +120,7 @@ Invite-based onboarding flow allowing super admins to onboard restaurant manager
 - GET `/api/invites/validate/:token` - Validate invite token
 - POST `/api/auth/signup-with-invite` - Signup with token
 - GET `/api/restaurant/wizard-status` - Check if wizard needed
-- GET `/api/restaurant/neighborhoods` - Get neighborhood options
-- POST `/api/restaurant/complete-wizard` - Complete wizard setup
+- POST `/api/restaurant/complete-wizard` - Complete wizard setup (accepts googleBusinessLink, maxEmployees, goals)
 
 ## System Architecture
 
