@@ -9,6 +9,15 @@ Shift Surge is a Progressive Web Application (PWA) designed to connect service-i
 - **For Restaurants**: Tools for targeted promotion management, real-time analytics, and audience segmentation.
 - **For Superadmins**: Full platform oversight including user management, audit logging, and business metrics.
 
+## Recent Updates
+
+### October 16, 2025 - Codebase Cleanup & Admin Routing Fix
+- **Removed unused files:** Deleted `server/db.ts` and `server/db-direct.ts` (legacy Drizzle connection files)
+- **Cleaned up storage layer:** Removed 200+ lines of commented legacy Drizzle implementation from `server/storage.ts`
+- **Fixed admin routing:** Added redirect routes from `/admin` and `/superadmin` to `/admin/dashboard` for better UX
+- **Neighborhoods table:** Infrastructure kept for future location-based features (currently unused)
+- **Verified admin flow:** All admin pages, navigation, invite generation, and logout tested successfully
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
