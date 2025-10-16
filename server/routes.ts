@@ -809,18 +809,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/restaurant/complete-wizard", requireRestaurant, async (req: AuthRequest, res) => {
     try {
-      const { neighborhoodId, lat, lng, goals, address } = req.body;
+      const { googleBusinessLink, maxEmployees, goals } = req.body;
       
-      // Validate input (restaurantName removed - using from profile)
+      // Validate input
       const schema = z.object({
-        neighborhoodId: z.string(),
-        lat: z.string().optional(),
-        lng: z.string().optional(),
+        googleBusinessLink: z.string().url(),
+        maxEmployees: z.number().min(1).max(1000),
         goals: z.array(z.string()).min(1, "Please select at least one goal"),
-        address: z.string().optional(),
       });
       
-      const data = schema.parse({ neighborhoodId, lat, lng, goals, address });
+      const data = schema.parse({ googleBusinessLink, maxEmployees, goals });
 
       // Get current profile
       const profile = await storage.getRestaurantProfile(req.userId!);
@@ -833,17 +831,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Wizard already completed" });
       }
 
+      // Extract restaurant details from Google Places API
+      const { getRestaurantFromGoogleLink } = await import("./google-places");
+      const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+      
+      if (!apiKey) {
+        return res.status(500).json({ error: "Google Places API key not configured" });
+      }
+
+      let placeDetails;
+      try {
+        placeDetails = await getRestaurantFromGoogleLink(data.googleBusinessLink, apiKey);
+      } catch (error: any) {
+        console.error("Google Places API error:", error);
+        return res.status(400).json({ error: error.message || "Failed to fetch restaurant details from Google" });
+      }
+
       // Use restaurant name from profile and format organization name
       const restaurantName = profile.name;
       const organizationName = `${restaurantName}'s Organization`;
 
-      // Create organization
+      // Create organization with Google Places data
       const organization = await storage.createOrganization({
         name: organizationName,
-        address: data.address,
-        neighborhoodId: data.neighborhoodId,
-        lat: data.lat,
-        lng: data.lng,
+        address: placeDetails.formattedAddress,
+        lat: placeDetails.lat?.toString(),
+        lng: placeDetails.lng?.toString(),
+        googlePlaceId: placeDetails.placeId,
+        phone: placeDetails.phoneNumber,
+        businessHours: placeDetails.businessHours,
+        rating: placeDetails.rating?.toString(),
+        maxEmployees: data.maxEmployees,
         goals: data.goals,
         isActive: true,
       });
@@ -859,8 +877,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         JSON.stringify({ 
           restaurantName,
           organizationName,
-          neighborhood: data.neighborhoodId,
-          goals: data.goals
+          maxEmployees: data.maxEmployees,
+          goals: data.goals,
+          googlePlaceId: placeDetails.placeId
         })
       );
 
@@ -869,6 +888,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         organization: {
           id: organization.id,
           name: organization.name,
+          address: placeDetails.formattedAddress,
+          phone: placeDetails.phoneNumber,
+          rating: placeDetails.rating,
         }
       });
     } catch (error) {

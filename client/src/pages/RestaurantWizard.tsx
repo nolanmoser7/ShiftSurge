@@ -76,11 +76,18 @@ export default function RestaurantWizard() {
     if (step < 2) {
       setStep(step + 1);
     } else {
-      // Validate goals on step 2
+      // Validate step 2 fields
       if (data.goals.length === 0) {
         form.setError("goals", {
           type: "manual",
           message: "Please select at least one goal"
+        });
+        return;
+      }
+      if (!data.maxEmployees || data.maxEmployees < 1) {
+        form.setError("maxEmployees", {
+          type: "manual",
+          message: "Please enter a valid number of employees"
         });
         return;
       }
@@ -192,7 +199,29 @@ export default function RestaurantWizard() {
               )}
 
               {step === 2 && (
-                <div className="space-y-4">
+                <div className="space-y-6">
+                  <FormField
+                    control={form.control}
+                    name="maxEmployees"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Maximum Number of Employees</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            placeholder="e.g., 25"
+                            {...field}
+                            data-testid="input-max-employees"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          What is the maximum number of employees you will onboard to Shift Surge? (We'll allow up to 5 additional for flexibility)
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
                   <FormField
                     control={form.control}
                     name="goals"
