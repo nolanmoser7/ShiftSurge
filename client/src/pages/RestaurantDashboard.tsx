@@ -1,21 +1,24 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { StatCard } from "@/components/StatCard";
 import { PromotionForm } from "@/components/PromotionForm";
+import { InviteQRCode } from "@/components/InviteQRCode";
 import {
   Eye,
   Users,
   CheckCircle2,
   TrendingUp,
   Plus,
+  UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
   DialogContent,
@@ -27,7 +30,10 @@ import {
 export default function RestaurantDashboard() {
   const { user, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [workerInvite, setWorkerInvite] = useState<any>(null);
 
   // Redirect if not authenticated or not a restaurant
   useEffect(() => {
@@ -40,6 +46,29 @@ export default function RestaurantDashboard() {
   const { data: promotions = [], isLoading: promotionsLoading } = useQuery<any[]>({
     queryKey: ["/api/restaurant/promotions"],
     enabled: !!user && user.role === "restaurant",
+  });
+
+  // Generate worker invite mutation
+  const generateInviteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/restaurant/invites", {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setWorkerInvite(data);
+      setIsInviteOpen(true);
+      toast({
+        title: "Worker invite created",
+        description: "Share the QR code or link with your team member",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate invite",
+        variant: "destructive",
+      });
+    },
   });
 
   // Calculate stats from promotions data
@@ -102,6 +131,16 @@ export default function RestaurantDashboard() {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <h1 className="text-2xl font-display font-bold">Restaurant Dashboard</h1>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => generateInviteMutation.mutate()}
+              disabled={generateInviteMutation.isPending}
+              data-testid="button-worker-invite"
+            >
+              <UserPlus className="h-4 w-4 mr-2" />
+              {generateInviteMutation.isPending ? "Generating..." : "Invite Worker"}
+            </Button>
+
             <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
               <DialogTrigger asChild>
                 <Button data-testid="button-new-promotion">
@@ -119,6 +158,23 @@ export default function RestaurantDashboard() {
                 }} />
               </DialogContent>
             </Dialog>
+
+            <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Worker Invite</DialogTitle>
+                </DialogHeader>
+                {workerInvite && (
+                  <InviteQRCode
+                    value={workerInvite.url}
+                    title="Share with Team Member"
+                    description="This QR code is single-use and expires in 24 hours"
+                    size={200}
+                  />
+                )}
+              </DialogContent>
+            </Dialog>
+
             <ThemeToggle />
           </div>
         </div>

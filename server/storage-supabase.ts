@@ -122,7 +122,17 @@ export class SupabaseStorage implements IStorage {
       if (error.code === 'PGRST116') return undefined;
       throw error;
     }
-    return data as WorkerProfile;
+    
+    // Transform snake_case to camelCase
+    return {
+      id: data.id,
+      userId: data.user_id,
+      orgId: data.org_id,
+      name: data.name,
+      position: data.worker_role,
+      isVerified: data.is_verified,
+      createdAt: data.created_at,
+    } as WorkerProfile;
   }
 
   async createWorkerProfile(profile: InsertWorkerProfile): Promise<WorkerProfile> {
@@ -130,6 +140,7 @@ export class SupabaseStorage implements IStorage {
       .from('worker_profiles')
       .insert({
         user_id: profile.userId,
+        org_id: profile.orgId || null,
         name: profile.name,
         worker_role: profile.position,
         is_verified: profile.isVerified || false
@@ -138,7 +149,17 @@ export class SupabaseStorage implements IStorage {
       .single();
     
     if (error) throw error;
-    return data as WorkerProfile;
+    
+    // Transform snake_case to camelCase
+    return {
+      id: data.id,
+      userId: data.user_id,
+      orgId: data.org_id,
+      name: data.name,
+      position: data.worker_role,
+      isVerified: data.is_verified,
+      createdAt: data.created_at,
+    } as WorkerProfile;
   }
 
   // Restaurant profile operations

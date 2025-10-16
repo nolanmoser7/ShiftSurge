@@ -12,6 +12,7 @@ import WorkerFeed from "@/pages/WorkerFeed";
 import RestaurantDashboard from "@/pages/RestaurantDashboard";
 import RestaurantWizard from "@/pages/RestaurantWizard";
 import SignupWithInvite from "@/pages/SignupWithInvite";
+import WorkerSignupWithInvite from "@/pages/WorkerSignupWithInvite";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminDashboard from "@/pages/AdminDashboard";
 import AdminUsers from "@/pages/AdminUsers";
@@ -43,6 +44,7 @@ function Router() {
       <Switch>
         <Route path="/" component={LandingPage} />
         <Route path="/signup" component={SignupWithInvite} />
+        <Route path="/worker-signup" component={WorkerSignupWithInvite} />
         <Route path="/worker-feed" component={WorkerFeed} />
         <Route path="/restaurant-dashboard" component={RestaurantDashboard} />
         <Route path="/restaurant/wizard" component={RestaurantWizard} />

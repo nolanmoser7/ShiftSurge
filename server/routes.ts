@@ -772,6 +772,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/auth/worker-signup-with-invite", async (req: AuthRequest, res) => {
+    try {
+      const { email, password, name, position, inviteToken } = req.body;
+      
+      console.log("[Worker Signup] Starting signup for:", email);
+      
+      // Validate input
+      const schema = z.object({
+        email: z.string().email(),
+        password: z.string().min(6),
+        name: z.string().min(1),
+        position: z.enum(["server", "bartender", "chef", "host", "manager", "other"]),
+        inviteToken: z.string(),
+      });
+      
+      const data = schema.parse({ email, password, name, position, inviteToken });
+
+      // Validate invite token
+      const validation = await adminStorage.validateInviteToken(data.inviteToken);
+      if (!validation.valid) {
+        console.log("[Worker Signup] Invalid invite token");
+        return res.status(400).json({ error: validation.error });
+      }
+
+      console.log("[Worker Signup] Valid invite, org_id:", validation.inviteData?.organizationId);
+
+      // Verify it's a staff invite with organizationId
+      if (validation.inviteData?.inviteType !== 'staff' || !validation.inviteData?.organizationId) {
+        console.log("[Worker Signup] Not a valid staff invite");
+        return res.status(400).json({ error: "Invalid staff invite" });
+      }
+
+      // Check if user exists
+      const existingUser = await storage.getUserByEmail(data.email);
+      if (existingUser) {
+        console.log("[Worker Signup] User already exists");
+        return res.status(400).json({ error: "Email already registered" });
+      }
+
+      // Hash password and create user
+      const hashedPassword = await hashPassword(data.password);
+      const user = await storage.createUser({
+        email: data.email,
+        password: hashedPassword,
+        role: 'worker',
+      });
+
+      console.log("[Worker Signup] User created:", user.id, user.email);
+
+      // Create worker profile with org_id from invite
+      const workerProfile = await storage.createWorkerProfile({
+        userId: user.id,
+        name: data.name,
+        position: data.position,
+        orgId: validation.inviteData.organizationId,
+        isVerified: true, // Auto-verify workers who join via invite
+      });
+
+      console.log("[Worker Signup] Worker profile created:", workerProfile.id, "org_id:", workerProfile.orgId);
+
+      // Increment invite usage
+      await adminStorage.incrementInviteUsage(validation.inviteData.id);
+
+      // Set session
+      (req as any).session.userId = user.id;
+      (req as any).session.userRole = user.role;
+
+      console.log("[Worker Signup] Signup complete for user:", user.id);
+
+      res.json({ 
+        user: { id: user.id, email: user.email, role: user.role },
+        success: true
+      });
+    } catch (error) {
+      console.error("Worker signup with invite error:", error);
+      res.status(400).json({ error: error instanceof Error ? error.message : "Signup failed" });
+    }
+  });
+
   // Restaurant wizard routes
   app.get("/api/restaurant/wizard-status", requireRestaurant, async (req: AuthRequest, res) => {
     try {
@@ -982,6 +1061,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Complete wizard error:", error);
       res.status(400).json({ error: error instanceof Error ? error.message : "Failed to complete wizard" });
+    }
+  });
+
+  // Restaurant worker invite generation
+  app.post("/api/restaurant/invites", requireRestaurant, async (req: AuthRequest, res) => {
+    try {
+      const profile = await storage.getRestaurantProfile(req.userId!);
+      if (!profile) {
+        return res.status(404).json({ error: "Restaurant profile not found" });
+      }
+
+      if (!profile.orgId) {
+        return res.status(400).json({ error: "Complete wizard first to generate worker invites" });
+      }
+
+      // Create 24-hour expiring invite for one worker
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 24);
+
+      const invite = await adminStorage.createInviteToken({
+        createdByUserId: req.userId!,
+        organizationId: profile.orgId,
+        inviteType: 'staff',
+        expiresAt,
+        maxUses: 1,
+      });
+
+      res.json({
+        id: invite.id,
+        token: invite.token,
+        inviteType: 'staff',
+        expiresAt,
+        url: `${req.protocol}://${req.get('host')}/worker-signup?invite=${invite.token}`
+      });
+    } catch (error: any) {
+      console.error("Create worker invite error:", error);
+      res.status(500).json({ error: "Failed to create invite", details: error.message });
     }
   });
 
