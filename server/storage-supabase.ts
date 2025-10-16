@@ -39,6 +39,9 @@ export interface IStorage {
   getOrganizations(): Promise<Organization[]>;
   getNeighborhoods(): Promise<any[]>;
   updateProfileOrgId(profileId: string, orgId: string, profileType: 'worker' | 'restaurant'): Promise<void>;
+  incrementActiveStaff(orgId: string): Promise<void>;
+  checkEmployeeLimit(orgId: string): Promise<{ canAdd: boolean; activeStaff: number; maxEmployees: number | null }>;
+
 
   // Promotion operations
   getPromotion(id: string): Promise<Promotion | undefined>;
@@ -316,6 +319,27 @@ export class SupabaseStorage implements IStorage {
       .eq('id', profileId);
     
     if (error) throw error;
+  }
+
+  async incrementActiveStaff(orgId: string): Promise<void> {
+    const { error } = await supabase.rpc('increment_active_staff', { org_id: orgId });
+    if (error) throw error;
+  }
+
+  async checkEmployeeLimit(orgId: string): Promise<{ canAdd: boolean; activeStaff: number; maxEmployees: number | null }> {
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('active_staff, max_employees')
+      .eq('id', orgId)
+      .single();
+    
+    if (error) throw error;
+    
+    const activeStaff = data.active_staff || 0;
+    const maxEmployees = data.max_employees;
+    const canAdd = maxEmployees === null || activeStaff < maxEmployees;
+    
+    return { canAdd, activeStaff, maxEmployees };
   }
 
   // Promotion operations

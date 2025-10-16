@@ -18,7 +18,7 @@ const signupSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   name: z.string().min(1, "Name is required"),
-  position: z.enum(["server", "bartender", "chef", "host", "manager", "other"], {
+  position: z.enum(["server", "bartender", "barback", "busser/foodrunner", "chef", "cook", "dishwasher", "host", "manager", "other"], {
     required_error: "Please select your position",
   }),
 });
@@ -209,7 +209,11 @@ export default function WorkerSignupWithInvite() {
                       <SelectContent>
                         <SelectItem value="server" data-testid="option-server">Server</SelectItem>
                         <SelectItem value="bartender" data-testid="option-bartender">Bartender</SelectItem>
+                        <SelectItem value="barback" data-testid="option-barback">Barback</SelectItem>
+                        <SelectItem value="busser/foodrunner" data-testid="option-busser">Busser/Food Runner</SelectItem>
                         <SelectItem value="chef" data-testid="option-chef">Chef</SelectItem>
+                        <SelectItem value="cook" data-testid="option-cook">Cook</SelectItem>
+                        <SelectItem value="dishwasher" data-testid="option-dishwasher">Dishwasher</SelectItem>
                         <SelectItem value="host" data-testid="option-host">Host</SelectItem>
                         <SelectItem value="manager" data-testid="option-manager">Manager</SelectItem>
                         <SelectItem value="other" data-testid="option-other">Other</SelectItem>

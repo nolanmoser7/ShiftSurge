@@ -783,7 +783,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: z.string().email(),
         password: z.string().min(6),
         name: z.string().min(1),
-        position: z.enum(["server", "bartender", "chef", "host", "manager", "other"]),
+        position: z.enum(["server", "bartender", "barback", "busser/foodrunner", "chef", "cook", "dishwasher", "host", "manager", "other"]),
         inviteToken: z.string(),
       });
       
@@ -802,6 +802,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (validation.inviteData?.inviteType !== 'staff' || !validation.inviteData?.organizationId) {
         console.log("[Worker Signup] Not a valid staff invite");
         return res.status(400).json({ error: "Invalid staff invite" });
+      }
+
+      // Check if organization has reached employee limit
+      const employeeLimit = await storage.checkEmployeeLimit(validation.inviteData.organizationId);
+      if (!employeeLimit.canAdd) {
+        console.log("[Worker Signup] Organization has reached employee limit");
+        return res.status(400).json({ 
+          error: `Organization has reached maximum employee limit of ${employeeLimit.maxEmployees}` 
+        });
       }
 
       // Check if user exists
@@ -831,6 +840,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       console.log("[Worker Signup] Worker profile created:", workerProfile.id, "org_id:", workerProfile.orgId);
+
+      // Increment organization's active staff counter
+      await storage.incrementActiveStaff(validation.inviteData.organizationId);
+      console.log("[Worker Signup] Incremented active_staff for org:", validation.inviteData.organizationId);
 
       // Increment invite usage
       await adminStorage.incrementInviteUsage(validation.inviteData.id);
