@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -13,7 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, ArrowRight, CheckCircle, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle, Sparkles, Search, MapPin, Loader2 } from "lucide-react";
 
 const GOAL_OPTIONS = [
   { value: "increase_table_turns", label: "Increase table turns in slow hours" },
@@ -23,9 +23,9 @@ const GOAL_OPTIONS = [
   { value: "increase_tips", label: "Increase tips for workers" },
 ] as const;
 
-// Step 1 schema - only validate Google Business link
+// Step 1 schema - only validate Place ID
 const step1Schema = z.object({
-  googleBusinessLink: z.string().min(1, "Please provide your Google Business link").url("Please enter a valid URL"),
+  placeId: z.string().min(1, "Please search and select your restaurant"),
 });
 
 // Step 2 schema - validate employee limit and goals
@@ -36,34 +36,72 @@ const step2Schema = z.object({
 
 // Combined schema for final submission
 const wizardSchema = z.object({
-  googleBusinessLink: z.string().min(1, "Please provide your Google Business link").url("Please enter a valid URL"),
+  placeId: z.string().min(1, "Please search and select your restaurant"),
   maxEmployees: z.coerce.number().min(1, "Please enter at least 1 employee").max(1000, "Maximum 1000 employees allowed"),
   goals: z.array(z.string()).min(1, "Please select at least one goal"),
 });
 
 type WizardFormData = z.infer<typeof wizardSchema>;
 
+interface PlacePrediction {
+  placeId: string;
+  description: string;
+  mainText?: string;
+  secondaryText?: string;
+}
+
 export default function RestaurantWizard() {
   const [step, setStep] = useState(1);
   const [isSuccess, setIsSuccess] = useState(false);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  
+  // Search autocomplete state
+  const [searchInput, setSearchInput] = useState("");
+  const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
+  const [selectedPlace, setSelectedPlace] = useState<PlacePrediction | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
 
   const form = useForm<WizardFormData>({
     mode: "onChange",
     defaultValues: {
-      googleBusinessLink: "",
+      placeId: "",
       maxEmployees: undefined,
       goals: [],
     },
   });
 
 
+  // Debounced search effect
+  useEffect(() => {
+    if (!searchInput || searchInput.length < 3) {
+      setPredictions([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const res = await fetch(`/api/restaurant/search-places?input=${encodeURIComponent(searchInput)}`);
+        const data = await res.json();
+        if (data.predictions) {
+          setPredictions(data.predictions);
+        }
+      } catch (error) {
+        console.error("Search error:", error);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
   const completeMutation = useMutation({
     mutationFn: async (data: WizardFormData) => {
       const payload = {
-        googleBusinessLink: data.googleBusinessLink,
-        maxEmployees: Number(data.maxEmployees), // Ensure it's a number
+        placeId: data.placeId,
+        maxEmployees: Number(data.maxEmployees),
         goals: data.goals,
       };
       const res = await apiRequest("POST", "/api/restaurant/complete-wizard", payload);
@@ -85,11 +123,11 @@ export default function RestaurantWizard() {
 
   const onSubmit = (data: WizardFormData) => {
     if (step === 1) {
-      // Validate Step 1: Google Business Link
-      const result = step1Schema.safeParse({ googleBusinessLink: data.googleBusinessLink });
+      // Validate Step 1: Place ID
+      const result = step1Schema.safeParse({ placeId: data.placeId });
       if (!result.success) {
         const error = result.error.errors[0];
-        form.setError("googleBusinessLink", {
+        form.setError("placeId", {
           type: "manual",
           message: error.message
         });
@@ -197,36 +235,76 @@ export default function RestaurantWizard() {
                 <div className="space-y-4">
                   <FormField
                     control={form.control}
-                    name="googleBusinessLink"
+                    name="placeId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Google Business Link</FormLabel>
+                        <FormLabel>Find Your Restaurant</FormLabel>
                         <FormControl>
-                          <Input
-                            placeholder="https://share.google/... or https://maps.app.goo.gl/..."
-                            {...field}
-                            data-testid="input-google-business-link"
-                          />
+                          <div className="relative">
+                            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              placeholder="Start typing your restaurant name..."
+                              value={selectedPlace ? selectedPlace.description : searchInput}
+                              onChange={(e) => {
+                                setSearchInput(e.target.value);
+                                setSelectedPlace(null);
+                                field.onChange("");
+                              }}
+                              data-testid="input-restaurant-search"
+                              className="pl-9"
+                            />
+                            {isSearching && (
+                              <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground" />
+                            )}
+                          </div>
                         </FormControl>
+                        
+                        {/* Autocomplete dropdown */}
+                        {predictions.length > 0 && !selectedPlace && (
+                          <div className="mt-2 border rounded-md bg-popover p-2 space-y-1 shadow-md">
+                            {predictions.map((prediction) => (
+                              <button
+                                key={prediction.placeId}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedPlace(prediction);
+                                  setSearchInput("");
+                                  setPredictions([]);
+                                  field.onChange(prediction.placeId);
+                                }}
+                                className="w-full text-left p-2 hover-elevate active-elevate-2 rounded-sm flex items-start gap-2"
+                                data-testid={`place-option-${prediction.placeId}`}
+                              >
+                                <MapPin className="h-4 w-4 mt-1 text-muted-foreground flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium truncate">{prediction.mainText || prediction.description}</div>
+                                  {prediction.secondaryText && (
+                                    <div className="text-sm text-muted-foreground truncate">{prediction.secondaryText}</div>
+                                  )}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        
                         <FormDescription>
-                          Paste your restaurant's Google Maps or Google Business link. We'll automatically extract your address, phone, rating, and other details.
+                          Type your restaurant name and select it from the dropdown. We'll automatically get your address, phone, rating, and other details from Google.
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                  <div className="bg-muted/50 p-4 rounded-lg space-y-2 text-sm">
-                    <p className="font-medium">How to get your Google Business link:</p>
-                    <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                      <li>Search for your restaurant on Google Maps</li>
-                      <li>Click the "Share" button on your place card</li>
-                      <li>Copy the short link (e.g., share.google/... or maps.app.goo.gl/...)</li>
-                      <li>Paste it above - we'll extract all your business details automatically!</li>
-                    </ol>
-                    <p className="text-muted-foreground mt-3 text-xs">
-                      ✓ Both short share links and full Google Maps URLs work
-                    </p>
-                  </div>
+                  {selectedPlace && (
+                    <div className="bg-primary/10 p-4 rounded-lg flex items-start gap-3">
+                      <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                        <MapPin className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium">Selected Restaurant</p>
+                        <p className="text-sm text-muted-foreground mt-1">{selectedPlace.description}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
