@@ -212,6 +212,26 @@ export function extractPlaceIdFromUrl(url: string): { placeId?: string; placeNam
 }
 
 /**
+ * Convert Knowledge Graph ID to Place ID using Find Place API
+ */
+async function convertKnowledgeGraphIdToPlaceId(
+  kgmid: string,
+  apiKey: string
+): Promise<string> {
+  // Knowledge Graph IDs start with /g/ (e.g., /g/11gl1y7d57)
+  const url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(kgmid)}&inputtype=textquery&fields=place_id&key=${apiKey}`;
+  
+  const response = await fetch(url);
+  const data = await response.json();
+  
+  if (data.status !== 'OK' || !data.candidates || data.candidates.length === 0) {
+    throw new Error('Could not convert Knowledge Graph ID to Place ID');
+  }
+  
+  return data.candidates[0].place_id;
+}
+
+/**
  * Fetch restaurant details from Google Places API
  * Uses Place Details API endpoint
  */
@@ -225,6 +245,14 @@ export async function fetchGooglePlaceDetails(
       throw new Error('Please use a Google Maps link that shows the restaurant name in the URL (e.g., google.com/maps/place/Restaurant+Name/...). Links with only "cid=" or shortened URLs cannot be processed.');
     }
     
+    // Convert Knowledge Graph IDs to Place IDs first
+    let actualPlaceId = placeId;
+    if (placeId.startsWith('/g/')) {
+      console.log('Converting Knowledge Graph ID to Place ID:', placeId);
+      actualPlaceId = await convertKnowledgeGraphIdToPlaceId(placeId, apiKey);
+      console.log('Converted to Place ID:', actualPlaceId);
+    }
+    
     // Fetch place details from Google Places API
     const fields = [
       'place_id',
@@ -236,7 +264,7 @@ export async function fetchGooglePlaceDetails(
       'geometry'
     ].join(',');
     
-    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=${fields}&key=${apiKey}`;
+    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(actualPlaceId)}&fields=${fields}&key=${apiKey}`;
     
     const response = await fetch(url);
     const data = await response.json();
