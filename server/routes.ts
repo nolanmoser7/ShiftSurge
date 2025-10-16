@@ -846,18 +846,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/restaurant/place-details/:placeId", requireRestaurant, async (req: AuthRequest, res) => {
+    try {
+      const { placeId } = req.params;
+      
+      if (!placeId) {
+        return res.status(400).json({ error: "Place ID is required" });
+      }
+      
+      const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "Google Places API key not configured" });
+      }
+      
+      // Fetch place details from Google Places API
+      const { fetchGooglePlaceDetails } = await import("./google-places");
+      
+      try {
+        const details = await fetchGooglePlaceDetails(placeId, apiKey);
+        
+        if (!details) {
+          return res.status(404).json({ error: "Place not found" });
+        }
+        
+        res.json({ 
+          placeId: details.placeId,
+          name: details.name,
+          address: details.formattedAddress,
+          phone: details.phoneNumber,
+          rating: details.rating,
+          businessHours: details.businessHours,
+          lat: details.lat,
+          lng: details.lng,
+        });
+      } catch (error: any) {
+        console.error("Fetch place details error:", error);
+        return res.status(400).json({ error: error.message || "Failed to fetch place details" });
+      }
+    } catch (error) {
+      console.error("Place details error:", error);
+      res.status(500).json({ error: "Failed to fetch place details" });
+    }
+  });
+
   app.post("/api/restaurant/complete-wizard", requireRestaurant, async (req: AuthRequest, res) => {
     try {
-      const { googleBusinessLink, maxEmployees, goals } = req.body;
+      const { placeId, maxEmployees, goals } = req.body;
       
       // Validate input
       const schema = z.object({
-        googleBusinessLink: z.string().url(),
+        placeId: z.string().min(1, "Place ID is required"),
         maxEmployees: z.number().min(1).max(1000),
         goals: z.array(z.string()).min(1, "Please select at least one goal"),
       });
       
-      const data = schema.parse({ googleBusinessLink, maxEmployees, goals });
+      const data = schema.parse({ placeId, maxEmployees, goals });
 
       // Get current profile
       const profile = await storage.getRestaurantProfile(req.userId!);
@@ -870,8 +913,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Wizard already completed" });
       }
 
-      // Extract restaurant details from Google Places API
-      const { getRestaurantFromGoogleLink } = await import("./google-places");
+      // Fetch restaurant details from Google Places API using Place ID
+      const { fetchGooglePlaceDetails } = await import("./google-places");
       const apiKey = process.env.GOOGLE_PLACES_API_KEY;
       
       if (!apiKey) {
@@ -880,7 +923,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       let placeDetails;
       try {
-        placeDetails = await getRestaurantFromGoogleLink(data.googleBusinessLink, apiKey);
+        placeDetails = await fetchGooglePlaceDetails(data.placeId, apiKey);
+        
+        if (!placeDetails) {
+          return res.status(404).json({ error: "Place not found" });
+        }
       } catch (error: any) {
         console.error("Google Places API error:", error);
         return res.status(400).json({ error: error.message || "Failed to fetch restaurant details from Google" });
