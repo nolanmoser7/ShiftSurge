@@ -15,6 +15,131 @@ interface PlaceDetails {
 }
 
 /**
+ * Detect if URL is a Google short URL that needs to be resolved
+ */
+function isGoogleShortUrl(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname.toLowerCase();
+    
+    return (
+      hostname === 'share.google' ||
+      hostname === 'maps.app.goo.gl' ||
+      hostname === 'goo.gl' ||
+      hostname === 'g.page'
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validate that a URL is from a trusted Google domain
+ */
+function isTrustedGoogleDomain(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname.toLowerCase();
+    
+    const trustedDomains = [
+      'google.com',
+      'maps.google.com',
+      'www.google.com',
+      'maps.app.goo.gl',
+      'goo.gl',
+      'g.page',
+      'share.google'
+    ];
+    
+    return trustedDomains.some(domain => 
+      hostname === domain || hostname.endsWith('.' + domain)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve a short URL by following redirects to get the full Google Maps URL
+ * Handles intermediate formats like maps.app.goo.gl/?link=...
+ * Only follows redirects to trusted Google domains for security (SSRF prevention)
+ */
+async function resolveShortUrl(shortUrl: string): Promise<string> {
+  try {
+    let currentUrl = shortUrl;
+    let maxRedirects = 10; // Prevent infinite loops
+    
+    while (maxRedirects > 0) {
+      // Validate current URL is from trusted Google domain
+      if (!isTrustedGoogleDomain(currentUrl)) {
+        throw new Error('Invalid redirect to non-Google domain detected');
+      }
+      
+      // Fetch with manual redirect handling to validate each hop
+      const response = await fetch(currentUrl, {
+        method: 'GET',
+        redirect: 'manual', // Manual mode to inspect each redirect
+      });
+      
+      // Handle redirects manually
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (!location) {
+          throw new Error('Redirect response missing Location header');
+        }
+        
+        // Resolve relative URLs
+        const nextUrl = new URL(location, currentUrl).href;
+        
+        // Validate redirect target is trusted before following
+        if (!isTrustedGoogleDomain(nextUrl)) {
+          throw new Error('Redirect points to untrusted domain: ' + new URL(nextUrl).hostname);
+        }
+        
+        currentUrl = nextUrl;
+        maxRedirects--;
+        continue;
+      }
+      
+      // Not a redirect, check for link parameter
+      const urlObj = new URL(currentUrl);
+      const linkParam = urlObj.searchParams.get('link');
+      
+      if (linkParam) {
+        // Decode the embedded link
+        const decodedLink = decodeURIComponent(linkParam);
+        
+        // Validate decoded link is from trusted Google domain
+        if (!isTrustedGoogleDomain(decodedLink)) {
+          throw new Error('Link parameter points to untrusted domain');
+        }
+        
+        // Continue resolving
+        currentUrl = decodedLink;
+        maxRedirects--;
+        continue;
+      }
+      
+      // Final validation before returning
+      if (!isTrustedGoogleDomain(currentUrl)) {
+        throw new Error('Final URL is not from a trusted Google domain');
+      }
+      
+      // No more redirects needed
+      return currentUrl;
+    }
+    
+    throw new Error('Too many redirects while resolving Google link');
+  } catch (error) {
+    console.error('Error resolving short URL:', error);
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('Could not resolve the shortened Google link. Please try using the direct Google Maps link instead.');
+  }
+}
+
+/**
  * Extract Place ID from various Google Maps/Business URL formats
  * Supports formats like:
  * - https://maps.google.com/?cid=12345
@@ -167,8 +292,16 @@ export async function getRestaurantFromGoogleLink(
   googleLink: string,
   apiKey: string
 ): Promise<PlaceDetails> {
+  // If it's a short URL, resolve it first
+  let urlToProcess = googleLink;
+  if (isGoogleShortUrl(googleLink)) {
+    console.log('Detected short URL, resolving:', googleLink);
+    urlToProcess = await resolveShortUrl(googleLink);
+    console.log('Resolved to:', urlToProcess);
+  }
+  
   // Extract place ID or name/coords from URL
-  const extracted = extractPlaceIdFromUrl(googleLink);
+  const extracted = extractPlaceIdFromUrl(urlToProcess);
   
   if (!extracted) {
     throw new Error('Could not extract Place ID from the provided Google link. Please ensure you\'re using a valid Google Maps or Google Business link.');

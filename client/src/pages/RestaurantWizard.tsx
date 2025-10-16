@@ -203,7 +203,7 @@ export default function RestaurantWizard() {
                         <FormLabel>Google Business Link</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="https://maps.google.com/..."
+                            placeholder="https://share.google/... or https://maps.app.goo.gl/..."
                             {...field}
                             data-testid="input-google-business-link"
                           />
@@ -216,15 +216,15 @@ export default function RestaurantWizard() {
                     )}
                   />
                   <div className="bg-muted/50 p-4 rounded-lg space-y-2 text-sm">
-                    <p className="font-medium">How to find your Google Business link:</p>
+                    <p className="font-medium">How to get your Google Business link:</p>
                     <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                       <li>Search for your restaurant on Google Maps</li>
-                      <li>Click the "Share" button</li>
-                      <li>Copy the link and paste it above</li>
+                      <li>Click the "Share" button on your place card</li>
+                      <li>Copy the short link (e.g., share.google/... or maps.app.goo.gl/...)</li>
+                      <li>Paste it above - we'll extract all your business details automatically!</li>
                     </ol>
-                    <p className="text-amber-600 dark:text-amber-500 mt-3 flex items-start gap-2">
-                      <span className="font-medium">Note:</span>
-                      <span>Make sure the link shows your restaurant name in the URL (e.g., .../place/Restaurant+Name/...). Links with only "?cid=" numbers cannot be processed.</span>
+                    <p className="text-muted-foreground mt-3 text-xs">
+                      ✓ Both short share links and full Google Maps URLs work
                     </p>
                   </div>
                 </div>
