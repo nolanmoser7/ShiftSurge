@@ -86,14 +86,20 @@ Invite-based onboarding flow allowing super admins to onboard restaurant manager
 
 **Google Places Integration:**
 - **API Key**: Stored in GOOGLE_PLACES_API_KEY secret
-- **URL Parsing**: Handles multiple Google Maps URL formats
+- **URL Support**: Handles all Google share link formats with secure redirect resolution
+  - Short share links: `share.google/*` and `maps.app.goo.gl/*` (preferred - what users get from "Share" button)
   - Direct Place IDs (ChIJ format)
   - Hex geocode IDs (0x format) - Extracts name/coords → uses Find Place API
-  - Standard Google Maps share links
+  - Full Google Maps URLs
+- **Secure Redirect Handling**: 
+  - Manual redirect following with per-hop validation
+  - SSRF protection: Only follows redirects to trusted Google domains
+  - Handles intermediate `?link=` parameter redirects
+  - Validates all URLs before making network requests
 - **Auto-extraction**: Address, phone, rating, business hours, coordinates
 - **Fallback Logic**: When Place ID not found, uses Find Place From Text API with restaurant name + coordinates
-- **User Guidance**: UI warns against CID-only URLs and guides users to use proper share links
-- **Implementation**: `server/google-places.ts` utility module
+- **User Guidance**: UI encourages short share links (easiest for users)
+- **Implementation**: `server/google-places.ts` utility module with security hardening
 - **Migration**: `migrations/004_add_business_details_to_organizations.sql`
 
 **Employee Limit Feature:**
