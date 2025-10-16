@@ -151,17 +151,26 @@ export function extractPlaceIdFromUrl(url: string): { placeId?: string; placeNam
   try {
     const urlObj = new URL(url);
     
-    // Format 1: ftid parameter (actual Place ID)
+    // Format 1: Knowledge Graph ID (from share.google links)
+    if (urlObj.searchParams.has('kgmid')) {
+      const kgmid = urlObj.searchParams.get('kgmid')!;
+      // Knowledge Graph IDs start with /g/ (e.g., /g/11gl1y7d57)
+      if (kgmid.startsWith('/g/')) {
+        return { placeId: kgmid };
+      }
+    }
+    
+    // Format 2: ftid parameter (actual Place ID)
     if (urlObj.searchParams.has('ftid')) {
       return { placeId: urlObj.searchParams.get('ftid')! };
     }
     
-    // Format 2: CID parameter
+    // Format 3: CID parameter
     if (urlObj.searchParams.has('cid')) {
       return { placeId: `cid:${urlObj.searchParams.get('cid')}` };
     }
     
-    // Format 3: Extract from data parameter (may be hex geocode, not Place ID)
+    // Format 4: Extract from data parameter (may be hex geocode, not Place ID)
     const dataParam = urlObj.searchParams.get('data');
     if (dataParam) {
       // Try to find actual Place ID (ChIJ format)
@@ -170,8 +179,8 @@ export function extractPlaceIdFromUrl(url: string): { placeId?: string; placeNam
         return { placeId: placeIdMatch[1] };
       }
       
-      // If hex geocode found, extract place name and coords instead
-      const hexMatch = dataParam.match(/!1s0x[0-9a-f]+:0x[0-9a-f]+/);
+      // If hex geocode found with 1s prefix, extract place name and coords instead
+      const hexMatch = dataParam.match(/1s(0x[0-9a-f]+:0x[0-9a-f]+)/);
       if (hexMatch) {
         // Extract place name from URL path
         const nameMatch = urlObj.pathname.match(/\/place\/([^/@]+)/);
@@ -189,7 +198,7 @@ export function extractPlaceIdFromUrl(url: string): { placeId?: string; placeNam
       }
     }
     
-    // Format 4: Direct Place ID in path
+    // Format 5: Direct Place ID in path
     const pathMatch = urlObj.pathname.match(/place\/([A-Za-z0-9_-]{20,})/);
     if (pathMatch) {
       return { placeId: pathMatch[1] };
