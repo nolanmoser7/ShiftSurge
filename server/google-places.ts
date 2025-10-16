@@ -86,9 +86,9 @@ export async function fetchGooglePlaceDetails(
   apiKey: string
 ): Promise<PlaceDetails | null> {
   try {
-    // Handle special cases (CID, short URLs)
+    // CID and short URLs can't be used directly - need better error
     if (placeId.startsWith('cid:') || placeId.startsWith('shorturl:')) {
-      throw new Error('This URL format requires additional lookup. Please use a direct Google Maps link with the full restaurant name visible.');
+      throw new Error('Please use a Google Maps link that shows the restaurant name in the URL (e.g., google.com/maps/place/Restaurant+Name/...). Links with only "cid=" or shortened URLs cannot be processed.');
     }
     
     // Fetch place details from Google Places API

@@ -222,6 +222,10 @@ export default function RestaurantWizard() {
                       <li>Click the "Share" button</li>
                       <li>Copy the link and paste it above</li>
                     </ol>
+                    <p className="text-amber-600 dark:text-amber-500 mt-3 flex items-start gap-2">
+                      <span className="font-medium">Note:</span>
+                      <span>Make sure the link shows your restaurant name in the URL (e.g., .../place/Restaurant+Name/...). Links with only "?cid=" numbers cannot be processed.</span>
+                    </p>
                   </div>
                 </div>
               )}
