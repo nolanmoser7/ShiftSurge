@@ -152,11 +152,15 @@ export function extractPlaceIdFromUrl(url: string): { placeId?: string; placeNam
     const urlObj = new URL(url);
     
     // Format 1: Knowledge Graph ID (from share.google links)
+    // These URLs have kgmid=/g/... and usually have q= parameter with place name
     if (urlObj.searchParams.has('kgmid')) {
       const kgmid = urlObj.searchParams.get('kgmid')!;
+      const placeName = urlObj.searchParams.get('q');
+      
       // Knowledge Graph IDs start with /g/ (e.g., /g/11gl1y7d57)
-      if (kgmid.startsWith('/g/')) {
-        return { placeId: kgmid };
+      // Use the place name for search since KG IDs can't be used directly with Places API
+      if (kgmid.startsWith('/g/') && placeName) {
+        return { placeName: decodeURIComponent(placeName) };
       }
     }
     
@@ -212,20 +216,20 @@ export function extractPlaceIdFromUrl(url: string): { placeId?: string; placeNam
 }
 
 /**
- * Convert Knowledge Graph ID to Place ID using Find Place API
+ * Find Place ID using Find Place From Text API (for place name only)
  */
-async function convertKnowledgeGraphIdToPlaceId(
-  kgmid: string,
+async function findPlaceByName(
+  name: string,
   apiKey: string
 ): Promise<string> {
-  // Knowledge Graph IDs start with /g/ (e.g., /g/11gl1y7d57)
-  const url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(kgmid)}&inputtype=textquery&fields=place_id&key=${apiKey}`;
+  const input = encodeURIComponent(name);
+  const url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${input}&inputtype=textquery&fields=place_id&key=${apiKey}`;
   
   const response = await fetch(url);
   const data = await response.json();
   
   if (data.status !== 'OK' || !data.candidates || data.candidates.length === 0) {
-    throw new Error('Could not convert Knowledge Graph ID to Place ID');
+    throw new Error(`Could not find place "${name}"`);
   }
   
   return data.candidates[0].place_id;
@@ -245,14 +249,6 @@ export async function fetchGooglePlaceDetails(
       throw new Error('Please use a Google Maps link that shows the restaurant name in the URL (e.g., google.com/maps/place/Restaurant+Name/...). Links with only "cid=" or shortened URLs cannot be processed.');
     }
     
-    // Convert Knowledge Graph IDs to Place IDs first
-    let actualPlaceId = placeId;
-    if (placeId.startsWith('/g/')) {
-      console.log('Converting Knowledge Graph ID to Place ID:', placeId);
-      actualPlaceId = await convertKnowledgeGraphIdToPlaceId(placeId, apiKey);
-      console.log('Converted to Place ID:', actualPlaceId);
-    }
-    
     // Fetch place details from Google Places API
     const fields = [
       'place_id',
@@ -264,7 +260,7 @@ export async function fetchGooglePlaceDetails(
       'geometry'
     ].join(',');
     
-    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(actualPlaceId)}&fields=${fields}&key=${apiKey}`;
+    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=${fields}&key=${apiKey}`;
     
     const response = await fetch(url);
     const data = await response.json();
@@ -350,7 +346,7 @@ export async function getRestaurantFromGoogleLink(
   if (extracted.placeId) {
     placeId = extracted.placeId;
   }
-  // Otherwise, use name and coordinates to find the Place ID
+  // If we have name and coordinates, use location-biased search
   else if (extracted.placeName && extracted.lat && extracted.lng) {
     placeId = await findPlaceByNameAndLocation(
       extracted.placeName,
@@ -358,7 +354,12 @@ export async function getRestaurantFromGoogleLink(
       extracted.lng,
       apiKey
     );
-  } else {
+  }
+  // If we only have a place name (e.g., from Knowledge Graph URLs), search by name
+  else if (extracted.placeName) {
+    placeId = await findPlaceByName(extracted.placeName, apiKey);
+  }
+  else {
     throw new Error('Could not extract enough information from the Google link');
   }
   
