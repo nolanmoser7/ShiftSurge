@@ -807,6 +807,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/restaurant/search-places", requireRestaurant, async (req: AuthRequest, res) => {
+    try {
+      const { input } = req.query;
+      
+      if (!input || typeof input !== 'string') {
+        return res.status(400).json({ error: "Search input is required" });
+      }
+      
+      const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "Google Places API key not configured" });
+      }
+      
+      // Call Google Places Autocomplete API
+      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&types=establishment&key=${apiKey}`;
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+        console.error('Google Places Autocomplete error:', data.status, data.error_message);
+        return res.status(500).json({ error: 'Failed to search places' });
+      }
+      
+      // Return predictions with place_id
+      const predictions = data.predictions?.map((p: any) => ({
+        placeId: p.place_id,
+        description: p.description,
+        mainText: p.structured_formatting?.main_text,
+        secondaryText: p.structured_formatting?.secondary_text,
+      })) || [];
+      
+      res.json({ predictions });
+    } catch (error) {
+      console.error("Search places error:", error);
+      res.status(500).json({ error: "Failed to search places" });
+    }
+  });
+
   app.post("/api/restaurant/complete-wizard", requireRestaurant, async (req: AuthRequest, res) => {
     try {
       const { googleBusinessLink, maxEmployees, goals } = req.body;
