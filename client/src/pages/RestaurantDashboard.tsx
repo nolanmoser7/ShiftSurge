@@ -157,7 +157,7 @@ export default function RestaurantDashboard() {
               onClick={() => generateInviteMutation.mutate()}
               disabled={
                 generateInviteMutation.isPending || 
-                (orgData?.organization?.maxEmployees && 
+                !!(orgData?.organization?.maxEmployees && 
                  orgData.organization.activeStaff >= orgData.organization.maxEmployees)
               }
               data-testid="button-worker-invite"

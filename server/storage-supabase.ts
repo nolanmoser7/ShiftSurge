@@ -322,8 +322,22 @@ export class SupabaseStorage implements IStorage {
   }
 
   async incrementActiveStaff(orgId: string): Promise<void> {
-    const { error } = await supabase.rpc('increment_active_staff', { org_id: orgId });
-    if (error) throw error;
+    // Fetch current active_staff
+    const { data: org, error: fetchError } = await supabase
+      .from('organizations')
+      .select('active_staff')
+      .eq('id', orgId)
+      .single();
+    
+    if (fetchError) throw fetchError;
+    
+    // Increment and update
+    const { error: updateError } = await supabase
+      .from('organizations')
+      .update({ active_staff: (org.active_staff || 0) + 1 })
+      .eq('id', orgId);
+    
+    if (updateError) throw updateError;
   }
 
   async checkEmployeeLimit(orgId: string): Promise<{ canAdd: boolean; activeStaff: number; maxEmployees: number | null }> {

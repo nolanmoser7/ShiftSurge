@@ -27,6 +27,10 @@ The backend is an **Express.js** application written in TypeScript, employing se
 
 The project uses **Supabase PostgreSQL** as its primary data store. Key tables include `users` (for authentication and roles), `worker_profiles`, `restaurant_profiles`, `promotions`, `claims`, `redemptions`, `organizations` (for restaurant management and onboarding), and `audit_logs` (for superadmin actions). Design decisions include VARCHAR primary keys with `gen_random_uuid()`, PostgreSQL enums for roles and statuses, and a direct relationship between `promotions` and `restaurant_profiles`. Supabase client is used directly, with Drizzle schema definitions providing TypeScript types.
 
+**Worker Positions:** The `worker_role` enum includes: server, bartender, barback, busser/foodrunner, chef, cook, dishwasher, host, manager, other.
+
+**Active Staff Tracking:** The `organizations` table tracks `active_staff` (count of workers) and `max_employees` (limit set during onboarding). Worker signup validates against this limit and increments the counter atomically.
+
 ### Design System
 
 The design system uses **CSS custom properties** for theme-aware colors, supporting separate palettes for worker and restaurant experiences, and a dark mode toggle. Component patterns include `hover-elevate` and `active-elevate-2` utility classes for interactive elements, and a subtle shadow system. The design is **mobile-first**, responsive, and touch-optimized.

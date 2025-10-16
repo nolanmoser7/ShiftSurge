@@ -18,7 +18,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         password: z.string().min(6),
         role: z.enum(["worker", "restaurant"]),
         name: z.string().min(1),
-        position: z.enum(["server", "bartender", "chef", "host", "manager", "other"]).optional(),
+        position: z.enum(["server", "bartender", "barback", "busser/foodrunner", "chef", "cook", "dishwasher", "host", "manager", "other"]).optional(),
         address: z.string().optional(),
         logoUrl: z.string().optional(),
       });
