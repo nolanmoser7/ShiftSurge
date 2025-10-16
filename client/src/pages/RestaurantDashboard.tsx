@@ -48,6 +48,19 @@ export default function RestaurantDashboard() {
     enabled: !!user && user.role === "restaurant",
   });
 
+  // Fetch restaurant organization details
+  const { data: orgData } = useQuery<{
+    organization: {
+      id: string;
+      name: string;
+      activeStaff: number;
+      maxEmployees: number | null;
+    } | null;
+  }>({
+    queryKey: ["/api/restaurant/organization"],
+    enabled: !!user && user.role === "restaurant",
+  });
+
   // Generate worker invite mutation
   const generateInviteMutation = useMutation({
     mutationFn: async () => {
@@ -131,10 +144,22 @@ export default function RestaurantDashboard() {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <h1 className="text-2xl font-display font-bold">Restaurant Dashboard</h1>
           <div className="flex items-center gap-2">
+            {orgData?.organization && (
+              <div className="text-sm text-muted-foreground mr-2" data-testid="text-remaining-invites">
+                {orgData.organization.maxEmployees 
+                  ? `${orgData.organization.maxEmployees - orgData.organization.activeStaff} remaining invites`
+                  : "Unlimited invites"
+                }
+              </div>
+            )}
             <Button
               variant="outline"
               onClick={() => generateInviteMutation.mutate()}
-              disabled={generateInviteMutation.isPending}
+              disabled={
+                generateInviteMutation.isPending || 
+                (orgData?.organization?.maxEmployees && 
+                 orgData.organization.activeStaff >= orgData.organization.maxEmployees)
+              }
               data-testid="button-worker-invite"
             >
               <UserPlus className="h-4 w-4 mr-2" />

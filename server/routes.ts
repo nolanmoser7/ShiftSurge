@@ -1077,6 +1077,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get restaurant organization details
+  app.get("/api/restaurant/organization", requireRestaurant, async (req: AuthRequest, res) => {
+    try {
+      const profile = await storage.getRestaurantProfile(req.userId!);
+      if (!profile) {
+        return res.status(404).json({ error: "Restaurant profile not found" });
+      }
+
+      if (!profile.orgId) {
+        return res.json({ organization: null });
+      }
+
+      const organization = await storage.getOrganization(profile.orgId);
+      if (!organization) {
+        return res.status(404).json({ error: "Organization not found" });
+      }
+
+      res.json({
+        organization: {
+          id: organization.id,
+          name: organization.name,
+          activeStaff: organization.activeStaff,
+          maxEmployees: organization.maxEmployees,
+        }
+      });
+    } catch (error: any) {
+      console.error("Get organization error:", error);
+      res.status(500).json({ error: "Failed to fetch organization" });
+    }
+  });
+
   // Restaurant worker invite generation
   app.post("/api/restaurant/invites", requireRestaurant, async (req: AuthRequest, res) => {
     try {
